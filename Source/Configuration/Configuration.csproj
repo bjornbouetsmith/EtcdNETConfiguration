@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <RootNamespace>ROOT.Etcd.Configuration</RootNamespace>
+    <AssemblyName>ROOT.Etcd.Configuration</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="dotnet-etcd" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+</Project>
