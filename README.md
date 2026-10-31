@@ -27,3 +27,14 @@ A drop-in etcd-backed configuration provider for .NET's dependency-injection/hos
 Tests are a mix of unit tests and integration tests that uses a real etcd server.
 
 Tests will auto start the etcd docker container, but it requires that a docker runtime is available.
+
+## Warning
+When using this library do not use `localhost` as the hostname for the etcd service. This can cause extreme delays because the DNS resolution returns an IP address family that the service is potentially not listening on.
+
+Windows defaults `localhost` to return an IPV6 address, and if your etcd service is not listening on IPV6 then the client will time out in connecting and then retry with IPv4.
+
+This is not a problem in this library or the underlying service, but simply a DNS resolution problem.
+
+To overcome this problem, don't use `localhost` and instead use `127.0.0.1` or a hostname that resolves to the actual IP address and family that the service listens on.
+
+See [this](https://github.com/dotnet/runtime/issues/65375) for reference.
