@@ -142,7 +142,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         public void Dump()
         {
-            _logger.LogInformation(JsonSerializer.Serialize(_options));
+            _logger.LogInformation("Configuration: {@Configuration}",JsonSerializer.Serialize(_options));
         }
     }
 
