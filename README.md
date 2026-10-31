@@ -21,6 +21,56 @@ It is published as a NuGet package (`ROOT.Etcd.Configuration`) under the namespa
 
 A drop-in etcd-backed configuration provider for .NET's dependency-injection/hosting configuration system, with background polling, change logging/redaction.
 
+## How to use it
+
+Install nuget package.
+
+Update your start up class.
+
+```csharp
+var builder = Host.CreateDefaultBuilder();
+
+builder.AddEtcdConfiguration(options =>
+{
+    options.EndPoints = "http://127.0.0.1:2379";
+    options.RootKey = "/myroot";
+    options.RefreshInterval = TimeSpan.FromMinutes(5);
+});
+```
+
+Thats it.
+
+Library will look for keys with the prefix `/myroot` in the example above.
+
+And below that the configuration is defined in the same way as you would define a dictionary and load it into the [configuration](https://learn.microsoft.com/en-us/dotnet/core/extensions/configuration) system.
+
+So if you add the following key/values to etcd:
+
+|Key|Value|
+|-|-|
+|"/mykey/connectionstrings:0"| databaserver1|
+|"/mykey/connectionstrings:1"| databaserver2|
+
+It could be bound to a class 
+```csharp
+public class Configuration
+{
+    public List<string> ConnectionStrings { get; set; }
+}
+```
+
+With the simple code:
+
+```csharp
+builder.ConfigureServices((ctx, services) =>
+{
+    services.Configure<Configuration>(ctx.Configuration.GetSection("/mykey"));
+});
+
+var options = host.Services.GetRequiredService<IOptions<Configuration>>();
+```
+
+And you would be able to depend on `IOptions<Configuration>`
 
 ## Source code testing
 
