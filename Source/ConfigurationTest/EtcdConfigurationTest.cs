@@ -81,6 +81,10 @@ public class EtcdConfigurationTest : IntegrationTestBase
         await client.PutAsync($"{rootKey}:one", "value-one");
         await client.PutAsync($"{rootKey}:two", "value-two");
 
+        var range1 = await client.GetAsync($"{rootKey}:one");
+        var range2 = await client.GetAsync($"{rootKey}:two");
+        Assert.Single(range1.Kvs);
+        Assert.Single(range2.Kvs);
         try
         {
             var builder = Host.CreateDefaultBuilder();
