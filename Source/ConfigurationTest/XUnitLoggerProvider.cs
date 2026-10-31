@@ -47,7 +47,7 @@ public sealed class XUnitLoggerProvider : ILoggerProvider
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             var logMessage = formatter(state, exception);
-            var finalMessage = $"{DateTime.UtcNow:O} {_categoryName} [{logLevel}] : {logMessage}";
+            var finalMessage = $"{DateTime.UtcNow:O} {_categoryName} [{logLevel}] : {logMessage} {exception}";
 
             _testOutputHelper.WriteLine(finalMessage);
         }

@@ -1,10 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace ROOT.Etcd.Configuration;
 
-public delegate Task ConfigurationChangedDelegate(IReadOnlyDictionary<string, string?> changes);
+public delegate void ConfigurationChangedDelegate(IReadOnlyDictionary<string, string?> changes);
 
 public interface IEtcdConfiguration
 {
@@ -14,17 +13,17 @@ public interface IEtcdConfiguration
 
 public interface IEtcdConfigurationUpdater
 {
-    void PublishChanges(IReadOnlyDictionary<string, string?> changes);
+    void PublishConfiguration(IReadOnlyDictionary<string, string?> configurationData);
 }
 
 public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
 {
     private Dictionary<string, string?>? _currentValues;
-    private Dictionary<string, string?>? _previousValues;
-
+    
     public event ConfigurationChangedDelegate? ConfigurationChanged;
 
-    public IReadOnlyDictionary<string, string?> Configuration => _currentValues ?? [];
+    public IReadOnlyDictionary<string, string?> Configuration =>
+        Volatile.Read(ref _currentValues) ?? [];
 
     public EtcdConfiguration()
     {
@@ -35,14 +34,16 @@ public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
         _currentValues = new Dictionary<string,string?>(initialValues);
     }
 
-    public void PublishChanges(IReadOnlyDictionary<string, string?> changes)
+    public void PublishConfiguration(IReadOnlyDictionary<string, string?> configurationData)
     {
-        var newData = new Dictionary<string, string>();
-        foreach (var change in changes)
+        var newData = new Dictionary<string, string?>();
+        foreach (var change in configurationData)
         {
             newData[change.Key] = change.Value;
         }
-        Interlocked.Exchange(ref _previousValues, null);
+
         Interlocked.Exchange(ref _currentValues, newData);
+        var handler = ConfigurationChanged;
+        handler?.Invoke(newData);
     }
 }

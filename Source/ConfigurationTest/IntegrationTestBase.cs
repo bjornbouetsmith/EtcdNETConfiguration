@@ -7,12 +7,12 @@ using Xunit.Abstractions;
 
 namespace ROOT.Etcd.ConfigurationTest;
 
-public abstract class TestBase
+public abstract class IntegrationTestBase
 {
     private readonly ITestOutputHelper _testOutputHelper;
     protected readonly string EtcdServer = Environment.GetEnvironmentVariable("ETCD_ENDPOINT") ?? "http://127.0.0.1:2379";
 
-    protected TestBase(ITestOutputHelper testOutputHelper)
+    protected IntegrationTestBase(ITestOutputHelper testOutputHelper)
     {
         _testOutputHelper = testOutputHelper;
     }
@@ -39,6 +39,10 @@ public abstract class TestBase
 
         var process = Process.Start(processInfo);
 
+        if (process == null) 
+        {
+            throw new InvalidOperationException("could not create docker compose command line - please check logs");
+        }
         await process.WaitForExitAsync();
         var result = await process.StandardOutput.ReadToEndAsync();
         var err = await process.StandardError.ReadToEndAsync();
@@ -56,12 +60,12 @@ public abstract class TestBase
 
     private string GetSourceDir()
     {
-        var thisFile = new System.IO.FileInfo(typeof(UnitTest1).Assembly.Location).Directory;
+        var thisFile = new System.IO.FileInfo(typeof(IntegrationTestBase).Assembly.Location).Directory;
         while (thisFile != null && thisFile.Name != "Source")
         {
             thisFile = thisFile.Parent;
         }
-        return thisFile.FullName;
+        return thisFile?.FullName ?? throw new InvalidOperationException("Could not determine source dir");
     }
 
     public EtcdClient CreateClient()

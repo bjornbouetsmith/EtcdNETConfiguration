@@ -5,6 +5,9 @@
     <AssemblyName>ROOT.Etcd.Configuration</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="ROOT.Etcd.ConfigurationTest"/>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="dotnet-etcd" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
