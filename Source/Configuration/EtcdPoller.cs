@@ -12,23 +12,33 @@ public sealed class EtcdPoller : IHostedService, IDisposable, IAsyncDisposable
     private readonly IEtcdConfigurationLoader _configurationLoader;
     private readonly IEtcdConfigurationUpdater _etcdConfigurationUpdater;
     private readonly ILogger<EtcdPoller> _logger;
-    private Timer? _timer;
+    private readonly TimeProvider _timeProvider;
+    private readonly object _timerLock = new();
+    private ITimer? _timer;
     private long _stopping;
 
-
-    public EtcdPoller(IEtcdConfigurationLoader configurationLoader, IEtcdConfigurationUpdater etcdConfigurationUpdater, EtcdOptions options, ILogger<EtcdPoller> logger)
+    public EtcdPoller(IEtcdConfigurationLoader configurationLoader,
+        IEtcdConfigurationUpdater etcdConfigurationUpdater,
+        EtcdOptions options,
+        TimeProvider timeProvider,
+        ILogger<EtcdPoller> logger)
     {
         _options = options;
         _configurationLoader = configurationLoader;
         _etcdConfigurationUpdater = etcdConfigurationUpdater;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting ETCD polling");
 
-        _timer = new Timer(Runner, this, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        lock (_timerLock)
+        {
+            Interlocked.Exchange(ref _stopping, 0);
+            _timer = _timeProvider.CreateTimer(Runner, this, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        }
 
         return Task.CompletedTask;
     }
@@ -36,23 +46,34 @@ public sealed class EtcdPoller : IHostedService, IDisposable, IAsyncDisposable
     public Task StopAsync(CancellationToken cancellationToken)
     {
         Interlocked.Exchange(ref _stopping, 1);
+        TakeTimer()?.Dispose();
         return Task.CompletedTask;
     }
 
     private void Runner(object? state)
     {
+        if (Interlocked.Read(ref _stopping) == 1)
+        {
+            _logger.LogInformation("Skipping poll because the service is shutting down");
+            return;
+        }
+
         try
         {
-            var configuration = _configurationLoader.LoadConfiguration();
+            var (configuration,changesPresent) = _configurationLoader.LoadConfiguration();
 
-            _etcdConfigurationUpdater.PublishChanges(configuration);
+            if (!changesPresent) 
+            {
+                return;
+            }
+
+            _etcdConfigurationUpdater.PublishConfiguration(configuration);
         }
         catch (OperationCanceledException e)
         {
             if (Interlocked.Read(ref _stopping) != 1)
             {
                 _logger.LogWarning(e, "Timed out retreving data from etcd");
-
             }
         }
         catch (Exception e)
@@ -61,29 +82,54 @@ public sealed class EtcdPoller : IHostedService, IDisposable, IAsyncDisposable
         }
         finally
         {
-            if (Interlocked.Read(ref _stopping) != 1)
+            RearmOrStop();
+        }
+    }
+
+    private void RearmOrStop()
+    {
+        lock (_timerLock)
+        {
+            if (Interlocked.Read(ref _stopping) == 1)
+            {
+                _logger.LogInformation("Stopping polling because of service shutdown");
+                return;
+            }
+
+            try
             {
                 _timer?.Change(_options.RefreshInterval, Timeout.InfiniteTimeSpan);
             }
-            else
+            catch (ObjectDisposedException)
             {
-                _logger.LogInformation("Stopping polling because of service shutdown");
+                // The timer was disposed concurrently; polling has already stopped.
             }
         }
     }
 
     public void Dispose()
     {
-        var timer = Interlocked.Exchange(ref _timer, null);
-        timer?.Dispose();
+        Interlocked.Exchange(ref _stopping, 1);
+        TakeTimer()?.Dispose();
     }
 
     public async ValueTask DisposeAsync()
     {
-        var timer = Interlocked.Exchange(ref _timer, null);
+        Interlocked.Exchange(ref _stopping, 1);
+        var timer = TakeTimer();
         if (timer != null)
         {
             await timer.DisposeAsync();
+        }
+    }
+
+    private ITimer? TakeTimer()
+    {
+        lock (_timerLock)
+        {
+            var timer = _timer;
+            _timer = null;
+            return timer;
         }
     }
 }

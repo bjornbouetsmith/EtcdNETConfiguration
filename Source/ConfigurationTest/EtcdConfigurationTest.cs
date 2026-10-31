@@ -1,32 +1,39 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ROOT.Etcd.Configuration;
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Xunit.Abstractions;
 
 namespace ROOT.Etcd.ConfigurationTest;
 
-public class EtcdConfigurationTest : TestBase
+public class EtcdConfigurationTest : IntegrationTestBase
 {
     private readonly ITestOutputHelper _testOutputHelper;
     private readonly string _etcdServer = Environment.GetEnvironmentVariable("ETCD_ENDPOINT") ?? "http://127.0.0.1:2379";
 
-    public EtcdConfigurationTest(ITestOutputHelper testOutputHelper) 
+    public EtcdConfigurationTest(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
         _testOutputHelper = testOutputHelper;
     }
 
-    [Fact]
-    public async Task ShouldBeAbleToResolveConfiguration() 
+    [Fact, Trait("Category", "Integration")]
+    public async Task ShouldBeAbleToResolveConfiguration()
     {
         var containerUp = await StartEtcdContainer();
         Assert.True(containerUp);
 
+        using (var client = CreateClient())
+        {
+            await client.PutAsync("/configuration:Kafka:BootStrapServers:0", "localhost");
+            await client.PutAsync("/configuration:Kafka:BootStrapServers:1", "otherhost");
+        }
         var builder = Host.CreateDefaultBuilder();
         builder.ConfigureLogging(logging =>
         {
@@ -39,38 +46,109 @@ public class EtcdConfigurationTest : TestBase
         {
             options.EndPoints = _etcdServer;
         });
-        builder.ConfigureServices((ctx,services) => 
+        builder.ConfigureServices((ctx, services) =>
         {
             services.Configure<AppOptions>(ctx.Configuration.GetSection("/configuration"));
-            services.AddSingleton<TestClass>();
+            services.AddSingleton<TestService>();
         });
 
         using var host = builder.Build();
-     
-        await host.StartAsync();
-                
-        var options = host.Services.GetRequiredService<IOptions<AppOptions>>();
-        
-        _testOutputHelper.WriteLine(JsonSerializer.Serialize(options.Value));
 
-        var service = host.Services.GetRequiredService<TestClass>();
+        await host.StartAsync();
+
+        var options = host.Services.GetRequiredService<IOptions<AppOptions>>();
+
+        _testOutputHelper.WriteLine(JsonSerializer.Serialize(options.Value));
+        Assert.NotNull(options.Value.Kafka);
+        Assert.NotNull(options.Value.Kafka.BootStrapServers);
+        Assert.Equal(2, options.Value.Kafka.BootStrapServers.Count);
+        Assert.Equal("localhost", options.Value.Kafka.BootStrapServers[0]);
+        Assert.Equal("otherhost", options.Value.Kafka.BootStrapServers[1]);
+
+
+        var service = host.Services.GetRequiredService<TestService>();
         service.Dump();
     }
 
-    public class TestClass
+    [Fact, Trait("Category", "Integration")]
+    public async Task InitialConfigurationIsAvailableBeforeStartAndDeletedKeysAreRemoved()
     {
-        private readonly ILogger<TestClass> _logger;
+        var containerUp = await StartEtcdContainer();
+        Assert.True(containerUp);
+
+        var rootKey = $"/review-{Guid.NewGuid():N}";
+        using var client = CreateClient();
+        await client.PutAsync($"{rootKey}:one", "value-one");
+        await client.PutAsync($"{rootKey}:two", "value-two");
+
+        try
+        {
+            var builder = Host.CreateDefaultBuilder();
+            builder.ConfigureLogging(logging =>
+            {
+                logging.ClearProviders();
+                logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
+            });
+
+            builder.AddEtcdConfiguration(options =>
+            {
+                options.EndPoints = _etcdServer;
+                options.RootKey = rootKey;
+                options.RefreshInterval = TimeSpan.FromMilliseconds(100);
+            });
+
+            using var host = builder.Build();
+
+            // The shared IEtcdConfiguration must be seeded while the host is built,
+            // before any hosted service starts.
+            var etcdConfiguration = host.Services.GetRequiredService<IEtcdConfiguration>();
+            Assert.Equal("value-one", etcdConfiguration.Configuration[$"{rootKey}:one"]);
+            Assert.Equal("value-two", etcdConfiguration.Configuration[$"{rootKey}:two"]);
+
+            await host.StartAsync();
+
+            var configuration = host.Services.GetRequiredService<IConfiguration>();
+            Assert.Equal("value-one", configuration[$"{rootKey}:one"]);
+
+            await client.DeleteAsync($"{rootKey}:one");
+            await TestWait.UntilAsync(
+                () => configuration[$"{rootKey}:one"] is null,
+                "Expected the deleted key to disappear from configuration.");
+
+            Assert.Equal("value-two", configuration[$"{rootKey}:two"]);
+
+            await host.StopAsync();
+        }
+        finally
+        {
+            await client.DeleteRangeAsync(rootKey);
+        }
+    }
+
+    public class TestService
+    {
+        private readonly ILogger<TestService> _logger;
         private readonly AppOptions _options;
 
-        public TestClass(IOptions<AppOptions> options, ILogger<TestClass> logger)
+        public TestService(IOptions<AppOptions> options, ILogger<TestService> logger)
         {
             _logger = logger;
             _options = options.Value;
         }
 
-        public void Dump() 
+        public void Dump()
         {
             _logger.LogInformation(JsonSerializer.Serialize(_options));
         }
+    }
+
+    public class AppOptions
+    {
+        public KafkaOptions? Kafka { get; set; }
+    }
+
+    public class KafkaOptions
+    {
+        public required List<string> BootStrapServers { get; set; }
     }
 }
