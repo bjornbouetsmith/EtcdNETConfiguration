@@ -17,7 +17,7 @@ permissions:
 jobs:
   build-and-test:
 #    uses: bjornbouetsmith/shared-pipelines/.github/workflows/dotnet-docker-ci-build.yml@v1.3.0
-    uses: bjornbouetsmith/shared-pipelines/blob/users/bbs/update_test_action/.github/workflows/dotnet-docker-ci-build.yml
+    uses: bjornbouetsmith/shared-pipelines/blob/users/bbs/update_test_action/.github/workflows/dotnet-docker-ci-build.yml@v1.3.0
     with:
       working-directory: Source
       solution: ETCDConfiguration.sln
