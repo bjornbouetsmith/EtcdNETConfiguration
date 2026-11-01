@@ -11,81 +11,37 @@ on:
 
 permissions:
   contents: read
+  # Required so the shared pipeline can publish the Sonar quality gate status.
+  statuses: write
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    uses: bjornbouetsmith/shared-pipelines/.github/workflows/dotnet-docker-ci-build.yml@v1.3.0
+    with:
+      working-directory: Source
+      solution: ETCDConfiguration.sln
 
-    # GitHub starts this container before the job steps and publishes its
-    # ports on the runner, so the tests can reach etcd via 127.0.0.1.
-    services:
-      etcd:
-        image: quay.io/coreos/etcd:v3.6.5
-        entrypoint: /usr/local/bin/etcd
-        command: >-
-          --name=etcd
-          --data-dir=data.etcd
-          --advertise-client-urls=http://etcd:2379
-          --listen-client-urls=http://0.0.0.0:2379
-          --initial-advertise-peer-urls=http://etcd:2380
-          --listen-peer-urls=http://0.0.0.0:2380
-          --initial-cluster=etcd=http://etcd:2380
-          --initial-cluster-state=new
-          --initial-cluster-token=etcd-cluster-1
-        ports:
-          - 2379:2379
-          - 2380:2380
+      # Start the repository's Docker Compose stack and wait for etcd.
+      docker-compose-files: docker-compose.yml
+      wait-for-urls: http://127.0.0.1:2379/health
+      test-env: ETCD_ENDPOINT=http://127.0.0.1:2379
 
-    env:
-      # The tests use this endpoint instead of starting docker-compose.
-      ETCD_ENDPOINT: http://127.0.0.1:2379
+      # Run the tests with Coverlet coverage and keep the results as an artifact.
+      run-tests: true
+      test-args: --verbosity normal --collect:"XPlat Code Coverage"
+      test-results-directory: TestResults
+      upload-test-results: true
+      artifact-name: test-results
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Restore
-        run: dotnet restore Source/ETCDConfiguration.sln
-
-      - name: Build
-        run: dotnet build Source/ETCDConfiguration.sln --configuration Release --no-restore
-
-      - name: Wait for etcd
-        run: |
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error "${ETCD_ENDPOINT}/health"; then
-              echo "etcd is ready"
-              exit 0
-            fi
-            echo "Waiting for etcd (attempt ${attempt}/30)..."
-            sleep 2
-          done
-
-          echo "etcd did not become ready in time"
-          exit 1
-
-      - name: Test
-        run: >
-          dotnet test Source/ETCDConfiguration.sln
-          --configuration Release
-          --no-build
-          --no-restore
-          --logger "trx;LogFileName=test-results.trx"
-          --results-directory TestResults
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: TestResults
-          if-no-files-found: ignore
-
-      - name: Show etcd logs
-        if: failure()
-        run: docker logs "${{ job.services.etcd.id }}"
+      # SonarCloud analysis, coverage import and quality gate.
+      sonar: true
+      sonar-host-url: https://sonarcloud.io
+      sonar-project-key: ROOT.Etcd.Configuration
+      sonar-organization: bjornbouetsmith
+      sonar-coverage-reports: '**/coverage.opencover.xml'
+      sonar-quality-gate-wait: true
+      sonar-publish-status: true
+    secrets:
+      # The repository secret is named SONAR_TOKEN; the shared workflow expects
+      # the sonar-token secret name.
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
