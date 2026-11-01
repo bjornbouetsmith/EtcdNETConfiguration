@@ -25,7 +25,6 @@ jobs:
       sonar-organization: bjornbouetsmith
       sonar-coverage-reports: '**/coverage.opencover.xml'
       set-commit-status: true
-      working-directory: Source
       solution: ETCDConfiguration.sln
       docker-compose-files: docker-compose.yml
       docker-compose-project-name: shared-pipelines-docker-${{ github.run_id }}
