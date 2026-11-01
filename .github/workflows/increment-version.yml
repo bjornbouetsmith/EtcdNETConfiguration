@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   release:
-    uses: bjornbouetsmith/shared-pipelines/.github/workflows/increment-version.yml@v1.3.0
+    uses: bjornbouetsmith/shared-pipelines/.github/workflows/increment-version.yml@v1.3.3
     with:
       version-part: ${{ inputs.version_part || 'patch' }}
       version-file: Source/Directory.build.props
