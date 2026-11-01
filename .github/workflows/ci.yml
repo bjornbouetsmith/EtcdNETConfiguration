@@ -26,7 +26,7 @@ jobs:
       sonar-coverage-reports: '**/coverage.opencover.xml'
       set-commit-status: true
       solution: Source/ETCDConfiguration.sln
-      docker-compose-files: docker-compose.yml
+      docker-compose-files: Source/docker-compose.yml
       docker-compose-project-name: shared-pipelines-docker-${{ github.run_id }}
       wait-for-urls: http://127.0.0.1:2379/health
       wait-timeout-seconds: 120
