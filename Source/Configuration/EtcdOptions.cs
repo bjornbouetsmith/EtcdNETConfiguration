@@ -3,50 +3,58 @@ using System.Collections.Generic;
 
 namespace ROOT.Etcd.Configuration;
 
+/// <summary>
+/// Configuration options for connecting to and interacting with an etcd cluster.
+/// Contains connection endpoints, polling intervals, redaction settings, and validation logic.
+/// </summary>
 public record EtcdOptions 
 {
-    // .NET timers reject due times above 0xFFFFFFFE milliseconds (~49.7 days).
+    /// <summary>
+    /// Maximum refresh interval supported by .NET timers (~49.7 days). Used as upper bound for RefreshInterval.
+    /// </summary>
     private static readonly TimeSpan MaxRefreshInterval = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
 
     /// <summary>
-    /// Gets or sets the Etcd endpoints, comma separated., i.e.
-    /// https://localhost:2379,https://localhost:2380
-    /// Defaults to https://localhost:2379
+    /// Gets or sets a comma-separated list of etcd endpoints (e.g., "https://127.0.0.1:2379,https://127.0.0.1:2380").
+    /// Defaults to "https://127.0.0.1:2379".
     /// </summary>
-    public string? EndPoints { get; set; } = "https://localhost:2379";
+    public string? EndPoints { get; set; } = "https://127.0.0.1:2379";
 
     /// <summary>
-    /// Key where configuration should be parsed from
-    /// Will load all keys that starts with <see cref="RootKey"/>
-    /// Defaults to <b>/configuration</b>
+    /// Gets or sets the root key prefix from which etcd configuration will be loaded.
+    /// All keys starting with this value are retrieved.
+    /// Defaults to "/configuration".
     /// </summary>
     public string? RootKey { get; set; } = "/configuration";
 
     /// <summary>
-    /// Gets or sets how often the configuration should be refreshed from etcd
-    /// Defaults to 1 minute
+    /// Gets or sets the interval at which configuration is polled for changes from etcd.
+    /// Defaults to TimeSpan.FromMinutes(1).
+    /// Values must be greater than <see cref="TimeSpan.Zero"/> and less than or equal to <see cref="MaxRefreshInterval"/> (~49.7 days).
     /// </summary>
     public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Timeout for calls to etcd.
+    /// Gets or sets the timeout for calls to etcd.
+    /// A non-zero value indicates the operation should complete within this duration; zero would typically indicate a timeout of zero.
     /// </summary>
     public TimeSpan ConfigurationTimeout { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Whether to replace configuration values with <c>***</c> in log messages.
-    /// Defaults to true.
+    /// Gets or sets whether to replace sensitive configuration values with "***" in log messages.
+    /// Defaults to true for security best practices.
     /// </summary>
     public bool RedactConfigurationValues { get; set; } = true;
 
     /// <summary>
-    /// Whether to use insecure (http) to communicate with etcd.
-    /// Defaults to true
+    /// Gets or sets whether to use insecure HTTP (instead of HTTPS) when communicating with etcd endpoints.
+    /// Defaults to true, enabling unencrypted connections.
     /// </summary>
     public bool UseInsecureChannels { get; set; } = true;
 
     /// <summary>
-    /// Validates that all required items are set and that values are within acceptable ranges
+    /// Validates that all required properties are set and values are within acceptable ranges.
+    /// Throws an <see cref="InvalidOperationException"/> if validation fails.
     /// </summary>
     public void Validate()
     {
@@ -87,6 +95,7 @@ public record EtcdOptions
         }
 
         var error = $"Etcd configuration invalid\r\n{string.Join(Environment.NewLine, errors)}";
+
         throw new InvalidOperationException(error);
     }
 }

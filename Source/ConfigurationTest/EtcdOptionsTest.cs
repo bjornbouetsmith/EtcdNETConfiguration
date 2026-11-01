@@ -10,7 +10,7 @@ public class EtcdOptionsTest
     {
         var options = new EtcdOptions();
 
-        Assert.Equal("https://localhost:2379", options.EndPoints);
+        Assert.Equal("https://127.0.0.1:2379", options.EndPoints);
         Assert.Equal("/configuration", options.RootKey);
         Assert.Equal(TimeSpan.FromMinutes(1), options.RefreshInterval);
         Assert.True(options.RedactConfigurationValues);

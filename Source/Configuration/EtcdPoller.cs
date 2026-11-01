@@ -30,6 +30,7 @@ public sealed class EtcdPoller : IHostedService, IDisposable, IAsyncDisposable
         _timeProvider = timeProvider;
     }
 
+    /// <inheritdoc/>
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting ETCD polling");
@@ -43,6 +44,7 @@ public sealed class EtcdPoller : IHostedService, IDisposable, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public Task StopAsync(CancellationToken cancellationToken)
     {
         Interlocked.Exchange(ref _stopping, 1);
@@ -107,12 +109,14 @@ public sealed class EtcdPoller : IHostedService, IDisposable, IAsyncDisposable
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         Interlocked.Exchange(ref _stopping, 1);
         TakeTimer()?.Dispose();
     }
 
+    /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         Interlocked.Exchange(ref _stopping, 1);

@@ -7,8 +7,20 @@ using System;
 
 namespace ROOT.Etcd.Configuration;
 
+/// <summary>
+/// Extension methods for configuring etcd integration in ASP.NET Core applications.
+/// </summary>
 public static class EtcdConfigurationProviderExtensions
 {
+    /// <summary>
+    /// Adds etcd-backed configuration support to an application host builder.
+    /// Configures the service collection with etcd client, options, poller, and initial configuration loading.
+    /// </summary>
+    /// <param name="hostBuilder">The host builder to configure.</param>
+    /// <param name="configureSource">Optional action to customize etcd options before validation (e.g., set endpoints or timeout).</param>
+    /// <param name="etcdClientFactory">Optional client factory; defaults to <see cref="EtcdClientFactory"/> if not provided.</param>
+    /// <param name="timeProvider">Optional time provider; uses system time if null.</param>
+    /// <returns>The same host builder with etcd configuration added.</returns>
     public static IHostBuilder AddEtcdConfiguration(
         this IHostBuilder hostBuilder,
         Action<EtcdOptions>? configureSource = null,
@@ -53,6 +65,12 @@ public static class EtcdConfigurationProviderExtensions
         return hostBuilder;
     }
 
+    /// <summary>
+    /// Configures the gRPC etcd client with options from the provided configuration.
+    /// Sets the connection string and determines whether to use insecure channels.
+    /// </summary>
+    /// <param name="etcdOptions">The etcd options containing endpoint and security settings.</param>
+    /// <param name="clientOptions">The gRPC client options to configure with etcd-specific values.</param>
     internal static void ConfigureEtcdClient(EtcdOptions etcdOptions, EtcdClientOptions clientOptions)
     {
         clientOptions.ConnectionString = etcdOptions.EndPoints;
