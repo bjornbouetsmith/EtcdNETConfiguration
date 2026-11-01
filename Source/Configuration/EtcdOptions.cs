@@ -61,7 +61,7 @@ public record EtcdOptions
         List<string>? errors = null;
         if (string.IsNullOrWhiteSpace(EndPoints)) 
         {
-            errors ??= new List<string>();
+            errors = new List<string>();
             errors.Add("Endpoints must be set to a non empty string");
         }
 
