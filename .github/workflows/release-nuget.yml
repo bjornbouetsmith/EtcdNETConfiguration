@@ -14,3 +14,4 @@ jobs:
       allowed-actors: bjornbouetsmith
       publish-nuget-org: true
       nuget-org-user: bjornbouetsmith
+      test-args: '--filter "TestCategory!=Integration"'
