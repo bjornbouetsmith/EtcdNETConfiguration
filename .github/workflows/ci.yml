@@ -29,7 +29,7 @@ jobs:
       solution: ETCDConfiguration.sln
       docker-compose-files: docker-compose.yml
       docker-compose-project-name: shared-pipelines-docker-${{ github.run_id }}
-      wait-for-urls: http://127.0.0.1:2379
+      wait-for-urls: http://127.0.0.1:2379/health
       wait-timeout-seconds: 120
       wait-interval-seconds: 2
       test-env: ETCD_ENDPOINT=http://127.0.0.1:2379
