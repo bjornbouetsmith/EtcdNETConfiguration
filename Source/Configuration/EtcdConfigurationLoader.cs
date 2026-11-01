@@ -5,28 +5,59 @@ using System.Collections.Generic;
 
 namespace ROOT.Etcd.Configuration;
 
+/// <summary>
+/// Interface for loading configuration data from etcd.
+/// </summary>
 public interface IEtcdConfigurationLoader
 {
+    /// <summary>
+    /// Loads the current configuration from etcd and determines if any changes occurred.
+    /// </summary>
+    /// <returns>Structure containing the loaded configuration and a flag indicating whether changes were detected.</returns>
     ConfigurationData LoadConfiguration();
 }
 
+/// <summary>
+/// Read-only record structure representing loaded configuration data.
+/// Contains both the current configuration values and a flag indicating if any changes occurred.
+/// </summary>
+/// <param name="Configuration">Current key-value pairs from etcd.</param>
+/// <param name="ChangesPresent">True if any keys were added, changed, or removed since the last load.</param>
 public readonly record struct ConfigurationData(IReadOnlyDictionary<string, string?> Configuration, bool ChangesPresent);
 
+/// <summary>
+/// Loads configuration data from etcd and compares it with previous values to detect changes.
+/// </summary>
 public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
 {
     private readonly IEtcdClient _etcdClient;
     private readonly ILogger<EtcdConfigurationLoader> _logger;
     private readonly EtcdOptions _options;
+    
     private Dictionary<string, string?>? _previousVersion;
     private readonly TimeProvider _timeProvider;
 
     private const string RedactedValue = "***";
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EtcdConfigurationLoader"/> class.
+    /// </summary>
+    /// <param name="etcdClient">The etcd client used for retrieving configuration values.</param>
+    /// <param name="options">Options containing connection settings and behavior configuration.</param>
+    /// <param name="logger">Logger instance for writing informational logs.</param>
     public EtcdConfigurationLoader(IEtcdClient etcdClient, EtcdOptions options, ILogger<EtcdConfigurationLoader> logger)
         : this(etcdClient, options, logger, null, null)
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EtcdConfigurationLoader"/> class with explicit dependencies.
+    /// </summary>
+    /// <param name="etcdClient">The etcd client used for retrieving configuration values.</param>
+    /// <param name="options">Options containing connection settings and behavior configuration.</param>
+    /// <param name="logger">Logger instance for writing logs.</param>
+    /// <param name="timeProvider">Optional time provider for consistent time access; uses system time if null.</param>
+    /// <param name="initialValues">Optional initial values to use as the previous version for change detection.</param>
     internal EtcdConfigurationLoader(
         IEtcdClient etcdClient,
         EtcdOptions options,
@@ -43,6 +74,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
             : new Dictionary<string, string?>(initialValues);
     }
 
+    /// <inheritdoc/>
     public ConfigurationData LoadConfiguration()
     {
         var data = new Dictionary<string, string?>();
@@ -62,8 +94,10 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     }
 
     /// <summary>
-    /// Logs changes and returns whether any changes was found
+    /// Logs configuration key changes and returns whether any additions, modifications, or deletions occurred.
     /// </summary>
+    /// <param name="newValues">The current values from etcd.</param>
+    /// <returns>True if any keys were added, changed, or removed; false otherwise.</returns>
     private bool LogChangedConfigurationKeys(Dictionary<string, string?> newValues)
     {
         if (_previousVersion is null)
@@ -115,6 +149,11 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
         return changes;
     }
 
+    /// <summary>
+    /// Redacts or returns the given value for logging. Returns "***" if redact mode is enabled.
+    /// </summary>
+    /// <param name="value">The value to conditionally redact.</param>
+    /// <returns>The original value or "***" if redaction is enabled.</returns>
     private string? GetValueForLog(string? value) =>
         _options.RedactConfigurationValues ? RedactedValue : value;
 }
