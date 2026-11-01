@@ -16,7 +16,8 @@ permissions:
 
 jobs:
   build-and-test:
-    uses: bjornbouetsmith/shared-pipelines/.github/workflows/dotnet-docker-ci-build.yml@v1.3.0
+#    uses: bjornbouetsmith/shared-pipelines/.github/workflows/dotnet-docker-ci-build.yml@v1.3.0
+    uses: bjornbouetsmith/shared-pipelines/blob/users/bbs/update_test_action/.github/workflows/dotnet-docker-ci-build.yml
     with:
       working-directory: Source
       solution: ETCDConfiguration.sln
@@ -26,9 +27,8 @@ jobs:
       wait-for-urls: http://127.0.0.1:2379/health
       test-env: ETCD_ENDPOINT=http://127.0.0.1:2379
 
-      # Run the tests with Coverlet coverage and keep the results as an artifact.
+      # Run the tests with coverage and keep the results as an artifact.
       run-tests: true
-      test-args: --verbosity normal --collect:"XPlat Code Coverage"
       test-results-directory: TestResults
       upload-test-results: true
       artifact-name: test-results
