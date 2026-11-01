@@ -1,3 +1,5 @@
+[![Build and Test](https://github.com/bjornbouetsmith/EtcdNETConfiguration/actions/workflows/ci.yml/badge.svg)](https://github.com/bjornbouetsmith/EtcdNETConfiguration/actions/workflows/ci.yml)
+
 # EtcdNETConfiguration — Overview
 
 `EtcdNETConfiguration` is a **C# (.NET) library that integrates `etcd` as a backing store for the standard `Microsoft.Extensions.Configuration` system**. 
