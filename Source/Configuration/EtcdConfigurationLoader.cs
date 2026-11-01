@@ -115,6 +115,6 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
         return changes;
     }
 
-    private object? GetValueForLog(string? value) =>
+    private string? GetValueForLog(string? value) =>
         _options.RedactConfigurationValues ? RedactedValue : value;
 }
