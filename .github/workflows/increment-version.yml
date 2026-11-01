@@ -19,4 +19,5 @@ jobs:
     uses: bjornbouetsmith/shared-pipelines/.github/workflows/increment-version.yml@v1.3.0
     with:
       version-part: ${{ inputs.version_part || 'patch' }}
+      version-file: Source/Directory.build.props
     secrets: inherit
