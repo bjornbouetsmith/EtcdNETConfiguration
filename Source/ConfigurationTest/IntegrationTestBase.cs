@@ -58,7 +58,7 @@ public abstract class IntegrationTestBase
             "true",
             StringComparison.OrdinalIgnoreCase);
 
-    private string GetSourceDir()
+    private static string GetSourceDir()
     {
         var thisFile = new System.IO.FileInfo(typeof(IntegrationTestBase).Assembly.Location).Directory;
         while (thisFile != null && thisFile.Name != "Source")

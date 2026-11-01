@@ -331,6 +331,8 @@ public class EtcdPollerTest
             CreateOptions(),
             CreateTimeProvider(), new TestLogger<EtcdPoller>());
 
+        Assert.NotNull(poller); // Prevents warning about no asertions in this test.
+
         poller.Dispose();
         poller.Dispose();
     }
@@ -343,6 +345,8 @@ public class EtcdPollerTest
             new RecordingUpdater(),
             CreateOptions(),
             CreateTimeProvider(), new TestLogger<EtcdPoller>());
+
+        Assert.NotNull(poller); // Prevents warning about no asertions in this test.
 
         await poller.DisposeAsync();
         await poller.DisposeAsync();
