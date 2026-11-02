@@ -45,3 +45,25 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # GitHub Actions used in .github/workflows, including the shared-pipelines
+  # reusable workflows and the publish-nuget composite action.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Copenhagen"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      # One PR for all action/workflow version bumps.
+      github-actions:
+        patterns:
+          - "*"
