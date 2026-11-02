@@ -2,16 +2,18 @@ name: Release nuget package
 
 on:
   workflow_dispatch:
+
 jobs:
   release:
     permissions:
       contents: read
       packages: write
-      id-token: write
     uses: bjornbouetsmith/shared-pipelines/.github/workflows/release-nuget.yml@v1.3.0
     with:
       solution: Source/ETCDConfiguration.sln
       allowed-actors: bjornbouetsmith
       publish-nuget-org: true
-      nuget-org-user: bjornbouetsmith
       test-args: '--filter "Category!=Integration"'
+    secrets:
+# nuget.org validates the workflow file that requests the OIDC token - so until that has been fixed, we need to use a personal access token for the nuget.org API key
+      nuget-org-api-key: ${{ secrets.NUGET_ORG_API_KEY }}
