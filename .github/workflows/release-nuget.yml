@@ -4,16 +4,28 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Build, test and pack with the shared pipeline. Publishing to nuget.org is
+  # disabled here because NuGet/login must run in this repository's workflow
+  # file for the OIDC token to match the nuget.org Trusted Publishing policy.
   release:
     permissions:
       contents: read
       packages: write
-    uses: bjornbouetsmith/shared-pipelines/.github/workflows/release-nuget.yml@v1.3.0
+    uses: bjornbouetsmith/shared-pipelines/.github/workflows/release-nuget.yml@v1.4.0
     with:
       solution: Source/ETCDConfiguration.sln
       allowed-actors: bjornbouetsmith
-      publish-nuget-org: true
+      publish-nuget-org: false
       test-args: '--filter "Category!=Integration"'
-    secrets:
-# nuget.org validates the workflow file that requests the OIDC token - so until that has been fixed, we need to use a personal access token for the nuget.org API key
-      nuget-org-api-key: ${{ secrets.NUGET_ORG_API_KEY }}
+
+  publish-nuget-org:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: bjornbouetsmith/shared-pipelines/.github/actions/publish-nuget@v1.4.0
+        with:
+          artifact-name: nuget-packages
+          user: bjornbouetsmith
