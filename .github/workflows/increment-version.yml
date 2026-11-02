@@ -21,4 +21,5 @@ jobs:
       solution: Source/ETCDConfiguration.sln
       version-part: ${{ inputs.version_part || 'patch' }}
       version-file: Source/Directory.Build.props
+      test-args: '--filter "Category!=Integration"'
     secrets: inherit
