@@ -13,7 +13,7 @@ jobs:
       packages: write
     uses: bjornbouetsmith/shared-pipelines/.github/workflows/release-nuget.yml@v1.4.0
     with:
-      solution: Source/ETCDConfiguration.sln
+      solution: Source/ETCDConfiguration.slnx
       allowed-actors: bjornbouetsmith
       publish-nuget-org: false
       test-args: '--filter "Category!=Integration"'

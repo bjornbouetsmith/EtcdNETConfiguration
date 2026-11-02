@@ -1,0 +1,24 @@
+<Solution>
+  <Folder Name="/Solution Items/" />
+  <Folder Name="/Solution Items/Build/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/Solution Items/Docker/">
+    <File Path="docker-compose.yml" />
+  </Folder>
+  <Folder Name="/Solution Items/Docs/">
+    <File Path="../LICENSE" />
+    <File Path="../README.md" />
+  </Folder>
+  <Folder Name="/Solution Items/Misc/">
+    <File Path="../.github/dependabot.yml" />
+  </Folder>
+  <Folder Name="/Solution Items/Workflows/">
+    <File Path="../.github/workflows/ci.yml" />
+    <File Path="../.github/workflows/increment-version.yml" />
+    <File Path="../.github/workflows/release-nuget.yml" />
+  </Folder>
+  <Project Path="Configuration/Configuration.csproj" />
+  <Project Path="ConfigurationTest/ConfigurationTest.csproj" />
+</Solution>
