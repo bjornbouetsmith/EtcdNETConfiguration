@@ -8,6 +8,8 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <RepositoryUrl>https://github.com/bjornbouetsmith/EtcdNETConfiguration</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <Authors>Bjørn Bouet Smith</Authors>
+    <Description>Configuration provider for Microsoft.Extensions.Configuration that uses etcd as a backend.</Description>
     <!-- Source Link information is embedded in the portable PDBs, so ship them in the package. -->
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
