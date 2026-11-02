@@ -4,6 +4,12 @@
     <RootNamespace>ROOT.Etcd.Configuration</RootNamespace>
     <AssemblyName>ROOT.Etcd.Configuration</AssemblyName>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <RepositoryUrl>https://github.com/bjornbouetsmith/EtcdNETConfiguration</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!-- Source Link information is embedded in the portable PDBs, so ship them in the package. -->
+    <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ROOT.Etcd.ConfigurationTest"/>
