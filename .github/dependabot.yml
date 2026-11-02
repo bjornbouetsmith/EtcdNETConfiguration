@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  # NuGet packages. Package versions are managed centrally in
+  # Source/Directory.Packages.props, so Dependabot scans that directory.
+  - package-ecosystem: "nuget"
+    directory: "/Source"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Copenhagen"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "nuget"
+    groups:
+      # Keep the Microsoft.Extensions.* packages in a single PR so their
+      # versions stay in sync.
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Group test and coverage tooling updates together.
+      test-tooling:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "Moq"
+          - "coverlet*"
+          - "altcover"
+        update-types:
+          - "minor"
+          - "patch"
+      # Everything else: one PR for all remaining minor/patch updates.
+      # Major updates are left as individual PRs for manual review.
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

@@ -18,7 +18,7 @@ jobs:
   release:
     uses: bjornbouetsmith/shared-pipelines/.github/workflows/increment-version.yml@v1.3.3
     with:
-      solution: Source/ETCDConfiguration.sln
+      solution: Source/ETCDConfiguration.slnx
       version-part: ${{ inputs.version_part || 'patch' }}
       version-file: Source/Directory.Build.props
       test-args: '--filter "Category!=Integration"'

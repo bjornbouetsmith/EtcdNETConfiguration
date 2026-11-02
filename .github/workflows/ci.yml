@@ -25,7 +25,7 @@ jobs:
       sonar-organization: bjornbouetsmith
       sonar-coverage-reports: '**/coverage.opencover.xml'
       set-commit-status: true
-      solution: Source/ETCDConfiguration.sln
+      solution: Source/ETCDConfiguration.slnx
       docker-compose-files: Source/docker-compose.yml
       docker-compose-project-name: shared-pipelines-docker-${{ github.run_id }}
       wait-for-urls: http://127.0.0.1:2379/health
