@@ -4,7 +4,6 @@
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ROOT.Etcd.ConfigurationTest</RootNamespace>
     <AssemblyName>ROOT.Etcd.ConfigurationTest</AssemblyName>
-    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <ItemGroup>
