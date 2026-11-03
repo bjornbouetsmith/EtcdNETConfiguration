@@ -3,7 +3,6 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Grpc.Core;
-using Xunit.Abstractions;
 
 namespace ROOT.Etcd.ConfigurationTest;
 
