@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Xunit.Abstractions;
 
 namespace ROOT.Etcd.ConfigurationTest;
 
@@ -30,8 +31,8 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         using (var client = CreateClient())
         {
-            await client.PutAsync("/configuration:Kafka:BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
-            await client.PutAsync("/configuration:Kafka:BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
+            await client.PutAsync("/configuration:Kafka:BootStrapServers:0", "localhost");
+            await client.PutAsync("/configuration:Kafka:BootStrapServers:1", "otherhost");
         }
         var builder = Host.CreateDefaultBuilder();
         builder.ConfigureLogging(logging =>
@@ -53,7 +54,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         using var host = builder.Build();
 
-        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.StartAsync();
 
         var options = host.Services.GetRequiredService<IOptions<AppOptions>>();
 
@@ -77,11 +78,11 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         var rootKey = $"/review-{Guid.NewGuid():N}";
         using var client = CreateClient();
-        await client.PutAsync($"{rootKey}:one", "value-one", cancellationToken: TestContext.Current.CancellationToken);
-        await client.PutAsync($"{rootKey}:two", "value-two", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}:one", "value-one");
+        await client.PutAsync($"{rootKey}:two", "value-two");
 
-        var range1 = await client.GetAsync($"{rootKey}:one", cancellationToken: TestContext.Current.CancellationToken);
-        var range2 = await client.GetAsync($"{rootKey}:two", cancellationToken: TestContext.Current.CancellationToken);
+        var range1 = await client.GetAsync($"{rootKey}:one");
+        var range2 = await client.GetAsync($"{rootKey}:two");
         Assert.Single(range1.Kvs);
         Assert.Single(range2.Kvs);
         try
@@ -108,23 +109,23 @@ public class EtcdConfigurationTest : IntegrationTestBase
             Assert.Equal("value-one", etcdConfiguration.Configuration[$"{rootKey}:one"]);
             Assert.Equal("value-two", etcdConfiguration.Configuration[$"{rootKey}:two"]);
 
-            await host.StartAsync(TestContext.Current.CancellationToken);
+            await host.StartAsync();
 
             var configuration = host.Services.GetRequiredService<IConfiguration>();
             Assert.Equal("value-one", configuration[$"{rootKey}:one"]);
 
-            await client.DeleteAsync($"{rootKey}:one", cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteAsync($"{rootKey}:one");
             await TestWait.UntilAsync(
                 () => configuration[$"{rootKey}:one"] is null,
                 "Expected the deleted key to disappear from configuration.");
 
             Assert.Equal("value-two", configuration[$"{rootKey}:two"]);
 
-            await host.StopAsync(TestContext.Current.CancellationToken);
+            await host.StopAsync();
         }
         finally
         {
-            await client.DeleteRangeAsync(rootKey, cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync(rootKey);
         }
     }
 

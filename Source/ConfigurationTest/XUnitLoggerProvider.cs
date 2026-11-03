@@ -1,5 +1,6 @@
 using System;
 using Microsoft.Extensions.Logging;
+using Xunit.Abstractions;
 
 namespace ROOT.Etcd.ConfigurationTest;
 
