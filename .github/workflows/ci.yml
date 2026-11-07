@@ -16,14 +16,14 @@ permissions:
 
 jobs:
   build-and-test:
-    uses: bjornbouetsmith/shared-pipelines/.github/workflows/dotnet-docker-ci-build.yml@v1.3.2
+    uses: bjornbouetsmith/shared-pipelines/.github/workflows/dotnet-docker-ci-build.yml@v1.5.0
     secrets:
       sonar-token: ${{ secrets.SONAR_TOKEN }}
     with:
       sonar: true
       sonar-project-key: ETCDConfiguration
       sonar-organization: bjornbouetsmith
-      sonar-coverage-reports: '**/coverage.opencover.xml'
+      sonar-coverage-reports: '**/TestResults/**/*.xml'
       set-commit-status: true
       solution: Source/ETCDConfiguration.slnx
       docker-compose-files: Source/docker-compose.yml
