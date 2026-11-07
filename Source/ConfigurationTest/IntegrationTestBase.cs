@@ -1,6 +1,7 @@
 ﻿using dotnet_etcd;
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 
@@ -16,7 +17,7 @@ public abstract class IntegrationTestBase
         _testOutputHelper = testOutputHelper;
     }
 
-    public async Task<bool> StartEtcdContainer()
+    public async Task<bool> StartEtcdContainer(CancellationToken cancellationToken)
     {
         // On GitHub Actions etcd is provided by the workflow's service container.
         // Locally, an already running instance can be used by setting ETCD_ENDPOINT.
@@ -36,15 +37,11 @@ public abstract class IntegrationTestBase
         processInfo.RedirectStandardOutput = true;
         processInfo.RedirectStandardError = true;
 
-        var process = Process.Start(processInfo);
+        var process = Process.Start(processInfo) ?? throw new InvalidOperationException("could not create docker compose command line - please check logs");
 
-        if (process == null) 
-        {
-            throw new InvalidOperationException("could not create docker compose command line - please check logs");
-        }
-        await process.WaitForExitAsync();
-        var result = await process.StandardOutput.ReadToEndAsync();
-        var err = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync(cancellationToken);
+        var result = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var err = await process.StandardError.ReadToEndAsync(cancellationToken);
         Trace.WriteLine("ETCD is up");
         Trace.WriteLine(result);
         Trace.WriteLine(err);

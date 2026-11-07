@@ -25,7 +25,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
     [Fact, Trait("Category", "Integration")]
     public async Task ShouldBeAbleToResolveConfiguration()
     {
-        var containerUp = await StartEtcdContainer();
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
         Assert.True(containerUp);
 
         using (var client = CreateClient())
@@ -64,7 +64,6 @@ public class EtcdConfigurationTest : IntegrationTestBase
         Assert.Equal("localhost", options.Value.Kafka.BootStrapServers[0]);
         Assert.Equal("otherhost", options.Value.Kafka.BootStrapServers[1]);
 
-
         var service = host.Services.GetRequiredService<TestService>();
         service.Dump();
     }
@@ -72,7 +71,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
     [Fact, Trait("Category", "Integration")]
     public async Task InitialConfigurationIsAvailableBeforeStartAndDeletedKeysAreRemoved()
     {
-        var containerUp = await StartEtcdContainer();
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
         Assert.True(containerUp);
 
         var rootKey = $"/review-{Guid.NewGuid():N}";
