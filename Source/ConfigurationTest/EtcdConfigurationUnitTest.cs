@@ -153,7 +153,7 @@ public class EtcdConfigurationUnitTest
                 firstRead.TrySetResult();
                 await Task.Yield();
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
         await firstRead.Task;
 
@@ -169,7 +169,7 @@ public class EtcdConfigurationUnitTest
             }
 
             Volatile.Write(ref done, 1);
-        });
+        }, TestContext.Current.CancellationToken);
 
         await Task.WhenAll(writer, reader);
 
