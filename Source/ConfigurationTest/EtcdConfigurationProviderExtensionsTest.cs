@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using dotnet_etcd.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Moq;
 using ROOT.Etcd.Configuration;
 
@@ -131,6 +133,136 @@ public class EtcdConfigurationProviderExtensionsTest
         // would keep deleted keys alive as a fallback.
         var source = Assert.Single(configurationBuilder.Sources);
         Assert.IsType<EtcdConfigurationSource>(source);
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_ReturnsTheSameHostBuilder()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+
+        var result = builder.AddEtcdConfiguration(_ => { });
+
+        Assert.Same(builder, result);
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_InvokesTheConfigureSourceActionOnce()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+        var callCount = 0;
+        EtcdOptions? configuredOptions = null;
+
+        builder.AddEtcdConfiguration(options =>
+        {
+            callCount++;
+            options.EndPoints = "http://localhost:2379";
+            configuredOptions = options;
+        });
+
+        Assert.Equal(1, callCount);
+        Assert.NotNull(configuredOptions);
+        Assert.Equal("http://localhost:2379", configuredOptions.EndPoints);
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_RegistersTheConfigurationServices()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+        EtcdOptions? configuredOptions = null;
+        builder.AddEtcdConfiguration(options =>
+        {
+            options.EndPoints = "http://localhost:2379";
+            configuredOptions = options;
+        });
+
+        var services = builder.Services;
+
+        var optionsDescriptor = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(EtcdOptions));
+        Assert.Same(configuredOptions, optionsDescriptor.ImplementationInstance);
+
+        var timeProviderDescriptor = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(TimeProvider));
+        Assert.Same(TimeProvider.System, timeProviderDescriptor.ImplementationInstance);
+
+        var configurationDescriptor = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IEtcdConfiguration));
+        var updaterDescriptor = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IEtcdConfigurationUpdater));
+        Assert.IsType<EtcdConfiguration>(configurationDescriptor.ImplementationInstance);
+        Assert.Same(configurationDescriptor.ImplementationInstance, updaterDescriptor.ImplementationInstance);
+
+        Assert.Single(services, descriptor => descriptor.ServiceType == typeof(IEtcdConfigurationLoader));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IHostedService) &&
+                          descriptor.ImplementationType == typeof(EtcdPoller));
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_RegistersTheProvidedTimeProvider()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+        var timeProvider = new TestTimeProvider(new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero));
+        builder.AddEtcdConfiguration(_ => { }, timeProvider: timeProvider);
+
+        var timeProviderDescriptor = Assert.Single(
+            builder.Services,
+            descriptor => descriptor.ServiceType == typeof(TimeProvider));
+        Assert.Same(timeProvider, timeProviderDescriptor.ImplementationInstance);
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_AddsTheHostConfigurationSources()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+        builder.AddEtcdConfiguration(_ => { });
+
+        // There must be only one etcd-backed provider. A separate one-time provider
+        // would keep deleted keys alive as a fallback.
+        var source = Assert.Single(
+            builder.Configuration.Sources,
+            source => source is EtcdConfigurationSource);
+        Assert.IsType<EtcdConfigurationSource>(source);
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_ThrowsWhenOptionsAreInvalid()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            builder.AddEtcdConfiguration(options => options.EndPoints = string.Empty));
+
+        Assert.Empty(builder.Services);
+        Assert.DoesNotContain(
+            builder.Configuration.Sources,
+            source => source is EtcdConfigurationSource);
+    }
+
+    private sealed class CapturingHostApplicationBuilder : IHostApplicationBuilder
+    {
+        public IConfigurationManager Configuration { get; } = new ConfigurationManager();
+
+        public IServiceCollection Services { get; } = new ServiceCollection();
+
+        public IHostEnvironment Environment { get; } = Mock.Of<IHostEnvironment>();
+
+        public ILoggingBuilder Logging { get; } = Mock.Of<ILoggingBuilder>();
+
+        public IMetricsBuilder Metrics { get; } = Mock.Of<IMetricsBuilder>();
+
+        public IDictionary<object, object> Properties { get; } = new Dictionary<object, object>();
+
+        public void ConfigureContainer<TContainerBuilder>(
+            IServiceProviderFactory<TContainerBuilder> factory,
+            Action<TContainerBuilder>? configure = null) where TContainerBuilder : notnull
+        {
+        }
     }
 
     private sealed class CapturingHostBuilder : IHostBuilder

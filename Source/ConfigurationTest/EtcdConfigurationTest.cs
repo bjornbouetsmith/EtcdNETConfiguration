@@ -23,7 +23,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
     }
 
     [Fact, Trait("Category", "Integration")]
-    public async Task ShouldBeAbleToResolveConfiguration()
+    public async Task ShouldBeAbleToResolveConfiguration_HostBuilder()
     {
         var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
         Assert.True(containerUp);
@@ -67,6 +67,49 @@ public class EtcdConfigurationTest : IntegrationTestBase
         var service = host.Services.GetRequiredService<TestService>();
         service.Dump();
     }
+
+    [Fact, Trait("Category", "Integration")]
+    public async Task ShouldBeAbleToResolveConfiguration_HostApplicationBuilder()
+    {
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
+        Assert.True(containerUp);
+
+        using (var client = CreateClient())
+        {
+            await client.PutAsync("/configuration:Kafka:BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
+            await client.PutAsync("/configuration:Kafka:BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
+        }
+        var builder = Host.CreateApplicationBuilder();
+        builder.Logging.ClearProviders();
+        builder.Logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
+        
+
+        builder.AddEtcdConfiguration(options =>
+        {
+            options.EndPoints = _etcdServer;
+        });
+
+        
+        builder.Services.Configure<AppOptions>(builder.Configuration.GetSection("/configuration"));
+        builder.Services.AddSingleton<TestService>();
+        
+        using var host = builder.Build();
+
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        var options = host.Services.GetRequiredService<IOptions<AppOptions>>();
+
+        _testOutputHelper.WriteLine(JsonSerializer.Serialize(options.Value));
+        Assert.NotNull(options.Value.Kafka);
+        Assert.NotNull(options.Value.Kafka.BootStrapServers);
+        Assert.Equal(2, options.Value.Kafka.BootStrapServers.Count);
+        Assert.Equal("localhost", options.Value.Kafka.BootStrapServers[0]);
+        Assert.Equal("otherhost", options.Value.Kafka.BootStrapServers[1]);
+
+        var service = host.Services.GetRequiredService<TestService>();
+        service.Dump();
+    }
+
 
     [Fact, Trait("Category", "Integration")]
     public async Task InitialConfigurationIsAvailableBeforeStartAndDeletedKeysAreRemoved()
