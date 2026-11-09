@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   release:
-    uses: bjornbouetsmith/shared-pipelines/.github/workflows/increment-version.yml@v1.3.3
+    uses: bjornbouetsmith/shared-pipelines/.github/workflows/increment-version.yml@v1.4.1
     with:
       solution: Source/ETCDConfiguration.slnx
       version-part: ${{ inputs.version_part || 'patch' }}
