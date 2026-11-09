@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: bjornbouetsmith/shared-pipelines/.github/workflows/release-nuget.yml@v1.4.0
+    uses: bjornbouetsmith/shared-pipelines/.github/workflows/release-nuget.yml@v1.4.1
     with:
       solution: Source/ETCDConfiguration.slnx
       allowed-actors: bjornbouetsmith
@@ -25,7 +25,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: bjornbouetsmith/shared-pipelines/.github/actions/publish-nuget@v1.4.0
+      - uses: bjornbouetsmith/shared-pipelines/.github/actions/publish-nuget@v1.4.1
         with:
           artifact-name: nuget-packages
           user: bjornbouetsmith
