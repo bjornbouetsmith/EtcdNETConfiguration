@@ -3,6 +3,7 @@ using dotnet_etcd.interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 
 namespace ROOT.Etcd.Configuration;
@@ -32,20 +33,19 @@ public static class EtcdConfigurationProviderExtensions
         var etcdOptions = new EtcdOptions();
 
         configureSource?.Invoke(etcdOptions);
-        etcdOptions.Validate();
 
         var clientFactory = etcdClientFactory ?? new EtcdClientFactory();
 
         hostBuilder.ConfigureServices((_, services) =>
         {
-            services.AddSingleton(etcdOptions);
+            AddEtcdOptions(services, etcdOptions);
             services.AddSingleton(timeProvider ?? TimeProvider.System);
             services.AddSingleton<IEtcdConfiguration>(etcdConfiguration);
             services.AddSingleton<IEtcdConfigurationUpdater>(etcdConfiguration);
             services.AddSingleton<IEtcdConfigurationLoader>(serviceProvider =>
                 new EtcdConfigurationLoader(
                     serviceProvider.GetRequiredService<IEtcdClient>(),
-                    etcdOptions,
+                    serviceProvider.GetRequiredService<EtcdOptions>(),
                     serviceProvider.GetRequiredService<ILogger<EtcdConfigurationLoader>>(),
                     timeProvider: serviceProvider.GetRequiredService<TimeProvider>(),
                     etcdConfiguration.Configuration));
@@ -84,19 +84,18 @@ public static class EtcdConfigurationProviderExtensions
         var etcdOptions = new EtcdOptions();
 
         configureSource?.Invoke(etcdOptions);
-        etcdOptions.Validate();
 
         var clientFactory = etcdClientFactory ?? new EtcdClientFactory();
 
-        hostBuilder.Services.AddSingleton(etcdOptions);
+        AddEtcdOptions(hostBuilder.Services, etcdOptions);
         hostBuilder.Services.AddSingleton(timeProvider ?? TimeProvider.System);
         hostBuilder.Services.AddSingleton<IEtcdConfiguration>(etcdConfiguration);
         hostBuilder.Services.AddSingleton<IEtcdConfigurationUpdater>(etcdConfiguration);
-        
+
         hostBuilder.Services.AddSingleton<IEtcdConfigurationLoader>(serviceProvider =>
             new EtcdConfigurationLoader(
                 serviceProvider.GetRequiredService<IEtcdClient>(),
-                etcdOptions,
+                serviceProvider.GetRequiredService<EtcdOptions>(),
                 serviceProvider.GetRequiredService<ILogger<EtcdConfigurationLoader>>(),
                 timeProvider: serviceProvider.GetRequiredService<TimeProvider>(),
                 etcdConfiguration.Configuration));
@@ -110,6 +109,40 @@ public static class EtcdConfigurationProviderExtensions
         hostBuilder.Configuration.Add(new EtcdConfigurationSource(etcdOptions, etcdConfiguration, clientFactory));
 
         return hostBuilder;
+    }
+
+    /// <summary>
+    /// Registers the etcd options with DataAnnotations validation that runs when options are
+    /// resolved and when the host starts. The validated options instance is used for dependency
+    /// injection so consumers receive the same values that were validated.
+    /// </summary>
+    /// <param name="services">The service collection to configure.</param>
+    /// <param name="etcdOptions">The options configured by the caller.</param>
+    private static void AddEtcdOptions(IServiceCollection services, EtcdOptions etcdOptions)
+    {
+        services.AddOptions<EtcdOptions>()
+            .Configure(options => CopyOptions(etcdOptions, options))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddSingleton(serviceProvider =>
+            serviceProvider.GetRequiredService<IOptions<EtcdOptions>>().Value);
+    }
+
+    /// <summary>
+    /// Copies the caller-provided option values into the options instance created by the
+    /// Microsoft.Extensions.Options infrastructure.
+    /// </summary>
+    /// <param name="source">The options configured by the caller.</param>
+    /// <param name="target">The options instance to populate.</param>
+    private static void CopyOptions(EtcdOptions source, EtcdOptions target)
+    {
+        target.EndPoints = source.EndPoints;
+        target.RootKey = source.RootKey;
+        target.RefreshInterval = source.RefreshInterval;
+        target.ConfigurationTimeout = source.ConfigurationTimeout;
+        target.RedactConfigurationValues = source.RedactConfigurationValues;
+        target.UseInsecureChannels = source.UseInsecureChannels;
     }
 
     /// <summary>
