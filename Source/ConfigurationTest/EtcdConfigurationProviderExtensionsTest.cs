@@ -74,6 +74,7 @@ public class EtcdConfigurationProviderExtensionsTest
             Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
             Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);
             Assert.Equal(configuredOptions.UseInsecureChannels, resolvedOptions.UseInsecureChannels);
+            Assert.Equal(configuredOptions.ServerCertificateAuthorityPath, resolvedOptions.ServerCertificateAuthorityPath);
         }
 
         var timeProviderDescriptor = Assert.Single(
@@ -131,6 +132,31 @@ public class EtcdConfigurationProviderExtensionsTest
 
         Assert.Equal(etcdOptions.EndPoints, clientOptions.ConnectionString);
         Assert.Equal(useInsecureChannels, clientOptions.UseInsecureChannel);
+        Assert.NotNull(clientOptions.ConfigureChannel);
+
+        var channelOptions = new Grpc.Net.Client.GrpcChannelOptions();
+        clientOptions.ConfigureChannel!(channelOptions);
+
+        Assert.Equal(
+            useInsecureChannels ? Grpc.Core.ChannelCredentials.Insecure : Grpc.Core.ChannelCredentials.SecureSsl,
+            channelOptions.Credentials);
+    }
+
+    [Fact]
+    public void ConfigureEtcdClient_WhenCustomCaIsProvided_ConfiguresTlsValidation()
+    {
+        var etcdOptions = new EtcdOptions
+        {
+            EndPoints = "https://etcd:2379",
+            UseInsecureChannels = false,
+            ServerCertificateAuthorityPath = "ca.crt"
+        };
+        var clientOptions = new EtcdClientOptions();
+
+        EtcdConfigurationProviderExtensions.ConfigureEtcdClient(etcdOptions, clientOptions);
+
+        Assert.NotNull(clientOptions.ConfigureChannel);
+        Assert.False(clientOptions.UseInsecureChannel);
     }
 
     [Fact]
@@ -204,6 +230,7 @@ public class EtcdConfigurationProviderExtensionsTest
             Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
             Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);
             Assert.Equal(configuredOptions.UseInsecureChannels, resolvedOptions.UseInsecureChannels);
+            Assert.Equal(configuredOptions.ServerCertificateAuthorityPath, resolvedOptions.ServerCertificateAuthorityPath);
         }
 
         var timeProviderDescriptor = Assert.Single(
