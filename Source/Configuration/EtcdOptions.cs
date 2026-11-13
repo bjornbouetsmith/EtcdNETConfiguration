@@ -11,19 +11,24 @@ namespace ROOT.Etcd.Configuration;
 public record EtcdOptions
 {
     /// <summary>
-    /// The smallest supported positive <see cref="TimeSpan"/> (one tick).
+    /// The smallest supported positive <see cref="TimeSpan"/> supported by the refresh interval
     /// </summary>
-    private const string PositiveTimeSpanMinimum = "00:00:00.0000001";
+    private const string MinimumRefreshInterval = "00:00:00";
 
     /// <summary>
-    /// Maximum refresh interval supported by .NET timers (~49.7 days).
+    /// The smallest supported positive <see cref="TimeSpan"/> supported 1 second
     /// </summary>
-    private const string MaxRefreshInterval = "49.17:02:47.2940000";
+    private const string MinimumConfigurationTimeout = "00:00:01";
 
     /// <summary>
-    /// The largest supported <see cref="TimeSpan"/> value.
+    /// Maximum refresh interval we want to support.
     /// </summary>
-    private const string MaxTimeSpan = "10675199.02:48:05.4775807";
+    private const string MaximumRefreshInterval = "1.00:00:00";
+
+    /// <summary>
+    /// The largest timeout we want to support
+    /// </summary>
+    private const string MaximumConfigurationTimeout = "00:01:00";
 
     /// <summary>
     /// Gets or sets a comma-separated list of etcd endpoints (e.g., "https://127.0.0.1:2379,https://127.0.0.1:2380").
@@ -43,19 +48,20 @@ public record EtcdOptions
     /// <summary>
     /// Gets or sets the interval at which configuration is polled for changes from etcd.
     /// Defaults to TimeSpan.FromMinutes(1).
-    /// Values must be greater than <see cref="TimeSpan.Zero"/> and less than or equal to
-    /// the maximum refresh interval supported by .NET timers (~49.7 days).
+    /// Values must be greater than or equal to <see cref="TimeSpan.Zero"/> and less than or equal to
+    /// the maximum refresh interval 24 hours.
+    /// Setting this to TimeSpan.Zero disables polling and only loads configuration once at startup.
     /// </summary>
-    [Range(typeof(TimeSpan), PositiveTimeSpanMinimum, MaxRefreshInterval,
-        ErrorMessage = "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer")]
+    [Range(typeof(TimeSpan), MinimumRefreshInterval, MaximumRefreshInterval,
+        ErrorMessage = "RefreshInterval must be set to a timespan greater than or equal to 0 and must not exceed 24 hours")]
     public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
     /// Gets or sets the timeout for calls to etcd.
     /// A non-zero value indicates the operation should complete within this duration; zero would typically indicate a timeout of zero.
     /// </summary>
-    [Range(typeof(TimeSpan), PositiveTimeSpanMinimum, MaxTimeSpan,
-        ErrorMessage = "ConfigurationTimeout must be set to a timespan greater than 0")]
+    [Range(typeof(TimeSpan), MinimumConfigurationTimeout, MaximumConfigurationTimeout,
+        ErrorMessage = "ConfigurationTimeout must be set to a timespan greater than 0 and less than 60 seconds")]
     public TimeSpan ConfigurationTimeout { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>

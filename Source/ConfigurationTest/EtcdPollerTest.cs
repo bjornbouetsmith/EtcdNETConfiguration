@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -10,6 +9,21 @@ namespace ROOT.Etcd.ConfigurationTest;
 
 public class EtcdPollerTest
 {
+    [Fact]
+    public async Task StartAsync_WhenRefreshIntervalIsZero_DoesNotCreateTimer()
+    {
+        var timeProvider = CreateTimeProvider();
+        var logger = new TestLogger<EtcdPoller>();
+        using var poller = new EtcdPoller(
+            new FakeConfigurationLoader(_ => CreateData(false)),
+            new RecordingUpdater(),
+            CreateOptions(TimeSpan.Zero),
+            timeProvider, logger);
+        await poller.StartAsync(CancellationToken.None);
+        
+        Assert.Contains(logger.Entries, entry => entry.Message == "ETCD polling is disabled because RefreshInterval is set to TimeSpan.Zero");
+    }
+
     [Fact]
     public async Task StartAsync_CreatesTimerUsingProvidedTimeProvider()
     {

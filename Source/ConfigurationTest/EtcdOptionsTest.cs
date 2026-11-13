@@ -105,18 +105,27 @@ public class EtcdOptionsTest
             error.ErrorMessage == "RootKey must be set to a non empty string");
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void Validation_WhenRefreshIntervalIsNotPositive_ReturnsError(int seconds)
+    [Fact]
+    public void Validation_WhenRefreshIntervalIsNotPositive_ReturnsError()
     {
-        var options = new EtcdOptions { RefreshInterval = TimeSpan.FromSeconds(seconds) };
+        var options = new EtcdOptions { RefreshInterval = TimeSpan.FromSeconds(-1) };
 
         var errors = Validate(options);
 
         Assert.Contains(errors, error =>
             error.ErrorMessage ==
-            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
+            "RefreshInterval must be set to a timespan greater than or equal to 0 and must not exceed 24 hours");
+    }
+
+    [Fact]
+    public void Validation_WhenRefreshIntervalIsAtMinimum_DoesNotReturnErrors()
+    {
+        var options = new EtcdOptions
+        {
+            RefreshInterval = TimeSpan.Zero
+        };
+
+        Assert.Empty(Validate(options));
     }
 
     [Fact]
@@ -124,7 +133,7 @@ public class EtcdOptionsTest
     {
         var options = new EtcdOptions
         {
-            RefreshInterval = TimeSpan.FromMilliseconds(uint.MaxValue - 1)
+            RefreshInterval = TimeSpan.FromHours(24)
         };
 
         Assert.Empty(Validate(options));
@@ -135,14 +144,14 @@ public class EtcdOptionsTest
     {
         var options = new EtcdOptions
         {
-            RefreshInterval = TimeSpan.FromMilliseconds((long)uint.MaxValue)
+            RefreshInterval = TimeSpan.FromDays(1).Add(TimeSpan.FromMilliseconds(1)),
         };
 
         var errors = Validate(options);
 
         Assert.Contains(errors, error =>
             error.ErrorMessage ==
-            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
+            "RefreshInterval must be set to a timespan greater than or equal to 0 and must not exceed 24 hours");
     }
 
     [Fact]
@@ -154,7 +163,7 @@ public class EtcdOptionsTest
 
         Assert.Contains(errors, error =>
             error.ErrorMessage ==
-            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
+            "RefreshInterval must be set to a timespan greater than or equal to 0 and must not exceed 24 hours");
     }
 
     [Theory]
@@ -167,7 +176,7 @@ public class EtcdOptionsTest
         var errors = Validate(options);
 
         Assert.Contains(errors, error =>
-            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0");
+            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0 and less than 60 seconds");
     }
 
     [Fact]
@@ -177,7 +186,7 @@ public class EtcdOptionsTest
         {
             EndPoints = null,
             RootKey = null,
-            RefreshInterval = TimeSpan.Zero,
+            RefreshInterval = TimeSpan.FromSeconds(-1),
             ConfigurationTimeout = TimeSpan.Zero
         };
 
@@ -189,9 +198,9 @@ public class EtcdOptionsTest
             error.ErrorMessage == "RootKey must be set to a non empty string");
         Assert.Contains(errors, error =>
             error.ErrorMessage ==
-            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
+            "RefreshInterval must be set to a timespan greater than or equal to 0 and must not exceed 24 hours");
         Assert.Contains(errors, error =>
-            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0");
+            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0 and less than 60 seconds");
     }
 
     private static List<ValidationResult> Validate(EtcdOptions options)

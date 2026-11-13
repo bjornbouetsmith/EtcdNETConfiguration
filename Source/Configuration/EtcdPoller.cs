@@ -33,6 +33,12 @@ public sealed class EtcdPoller : IHostedService, IDisposable, IAsyncDisposable
     /// <inheritdoc/>
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if(_options.RefreshInterval == TimeSpan.Zero)
+        {
+            _logger.LogInformation("ETCD polling is disabled because RefreshInterval is set to TimeSpan.Zero");
+            return Task.CompletedTask;
+        }
+
         _logger.LogInformation("Starting ETCD polling");
 
         lock (_timerLock)

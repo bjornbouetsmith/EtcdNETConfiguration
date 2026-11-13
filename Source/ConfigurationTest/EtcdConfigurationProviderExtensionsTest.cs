@@ -259,7 +259,7 @@ public class EtcdConfigurationProviderExtensionsTest
     {
         var builder = new CapturingHostApplicationBuilder();
 
-        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.Zero);
+        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.FromSeconds(-1));
 
         using var provider = builder.Services.BuildServiceProvider();
 
@@ -272,7 +272,7 @@ public class EtcdConfigurationProviderExtensionsTest
     public async Task ApplicationBuilder_AddEtcdConfiguration_ValidatesOptionsOnStart()
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.Zero);
+        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.FromSeconds(-1));
 
         using var host = builder.Build();
 
