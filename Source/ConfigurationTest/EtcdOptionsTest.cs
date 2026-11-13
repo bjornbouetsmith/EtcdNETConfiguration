@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using ROOT.Etcd.Configuration;
 
 namespace ROOT.Etcd.ConfigurationTest;
@@ -54,15 +56,15 @@ public class EtcdOptionsTest
     }
 
     [Fact]
-    public void Validate_WithDefaultOptions_DoesNotThrow()
+    public void Validation_WithDefaultOptions_DoesNotReturnErrors()
     {
         var options = new EtcdOptions();
 
-        options.Validate();
+        Assert.Empty(Validate(options));
     }
 
     [Fact]
-    public void Validate_WithValidCustomOptions_DoesNotThrow()
+    public void Validation_WithValidCustomOptions_DoesNotReturnErrors()
     {
         var options = new EtcdOptions
         {
@@ -72,7 +74,7 @@ public class EtcdOptionsTest
             ConfigurationTimeout = TimeSpan.FromSeconds(5)
         };
 
-        options.Validate();
+        Assert.Empty(Validate(options));
     }
 
     [Theory]
@@ -80,87 +82,96 @@ public class EtcdOptionsTest
     [InlineData("")]
     [InlineData(" ")]
     [InlineData("\t")]
-    public void Validate_WhenEndPointsIsMissing_Throws(string? endPoints)
+    public void Validation_WhenEndPointsIsMissing_ReturnsError(string? endPoints)
     {
         var options = new EtcdOptions { EndPoints = endPoints };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var errors = Validate(options);
 
-        Assert.Contains("Endpoints must be set to a non empty string", exception.Message);
+        Assert.Contains(errors, error =>
+            error.ErrorMessage == "Endpoints must be set to a non empty string");
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    public void Validate_WhenRootKeyIsMissing_Throws(string? rootKey)
+    public void Validation_WhenRootKeyIsMissing_ReturnsError(string? rootKey)
     {
         var options = new EtcdOptions { RootKey = rootKey };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var errors = Validate(options);
 
-        Assert.Contains("RootKey must be set to a non empty string", exception.Message);
+        Assert.Contains(errors, error =>
+            error.ErrorMessage == "RootKey must be set to a non empty string");
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Validate_WhenRefreshIntervalIsNotPositive_Throws(int seconds)
+    public void Validation_WhenRefreshIntervalIsNotPositive_ReturnsError(int seconds)
     {
         var options = new EtcdOptions { RefreshInterval = TimeSpan.FromSeconds(seconds) };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var errors = Validate(options);
 
-        Assert.Contains("RefreshInterval must be set to a timespan greater than 0", exception.Message);
+        Assert.Contains(errors, error =>
+            error.ErrorMessage ==
+            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
     }
 
     [Fact]
-    public void Validate_WhenRefreshIntervalIsAtTimerMaximum_DoesNotThrow()
+    public void Validation_WhenRefreshIntervalIsAtTimerMaximum_DoesNotReturnErrors()
     {
         var options = new EtcdOptions
         {
             RefreshInterval = TimeSpan.FromMilliseconds(uint.MaxValue - 1)
         };
 
-        options.Validate();
+        Assert.Empty(Validate(options));
     }
 
     [Fact]
-    public void Validate_WhenRefreshIntervalIsOneMillisecondAboveTimerMaximum_Throws()
+    public void Validation_WhenRefreshIntervalIsOneMillisecondAboveTimerMaximum_ReturnsError()
     {
         var options = new EtcdOptions
         {
             RefreshInterval = TimeSpan.FromMilliseconds((long)uint.MaxValue)
         };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var errors = Validate(options);
 
-        Assert.Contains("RefreshInterval must not exceed", exception.Message);
+        Assert.Contains(errors, error =>
+            error.ErrorMessage ==
+            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
     }
 
     [Fact]
-    public void Validate_WhenRefreshIntervalIsFarAboveTimerMaximum_Throws()
+    public void Validation_WhenRefreshIntervalIsFarAboveTimerMaximum_ReturnsError()
     {
         var options = new EtcdOptions { RefreshInterval = TimeSpan.FromDays(60) };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var errors = Validate(options);
 
-        Assert.Contains("RefreshInterval must not exceed", exception.Message);
+        Assert.Contains(errors, error =>
+            error.ErrorMessage ==
+            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Validate_WhenConfigurationTimeoutIsNotPositive_Throws(int seconds)
+    public void Validation_WhenConfigurationTimeoutIsNotPositive_ReturnsError(int seconds)
     {
         var options = new EtcdOptions { ConfigurationTimeout = TimeSpan.FromSeconds(seconds) };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var errors = Validate(options);
 
-        Assert.Contains("ConfigurationTimeout must be set to a timespan greater than 0", exception.Message);
+        Assert.Contains(errors, error =>
+            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0");
     }
 
     [Fact]
-    public void Validate_WithMultipleInvalidValues_ReportsEveryError()
+    public void Validation_WithMultipleInvalidValues_ReportsEveryError()
     {
         var options = new EtcdOptions
         {
@@ -170,12 +181,29 @@ public class EtcdOptionsTest
             ConfigurationTimeout = TimeSpan.Zero
         };
 
-        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        var errors = Validate(options);
 
-        Assert.StartsWith("Etcd configuration invalid", exception.Message);
-        Assert.Contains("Endpoints must be set to a non empty string", exception.Message);
-        Assert.Contains("RootKey must be set to a non empty string", exception.Message);
-        Assert.Contains("RefreshInterval must be set to a timespan greater than 0", exception.Message);
-        Assert.Contains("ConfigurationTimeout must be set to a timespan greater than 0", exception.Message);
+        Assert.Contains(errors, error =>
+            error.ErrorMessage == "Endpoints must be set to a non empty string");
+        Assert.Contains(errors, error =>
+            error.ErrorMessage == "RootKey must be set to a non empty string");
+        Assert.Contains(errors, error =>
+            error.ErrorMessage ==
+            "RefreshInterval must be set to a timespan greater than 0 and must not exceed the maximum supported by the timer");
+        Assert.Contains(errors, error =>
+            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0");
+    }
+
+    private static List<ValidationResult> Validate(EtcdOptions options)
+    {
+        var results = new List<ValidationResult>();
+
+        Validator.TryValidateObject(
+            options,
+            new ValidationContext(options),
+            results,
+            validateAllProperties: true);
+
+        return results;
     }
 }

@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using dotnet_etcd.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using ROOT.Etcd.Configuration;
 
@@ -61,7 +63,18 @@ public class EtcdConfigurationProviderExtensionsTest
         var optionsDescriptor = Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(EtcdOptions));
-        Assert.Same(configuredOptions, optionsDescriptor.ImplementationInstance);
+        Assert.NotNull(optionsDescriptor.ImplementationFactory);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            var resolvedOptions = provider.GetRequiredService<EtcdOptions>();
+            Assert.Equal(configuredOptions!.EndPoints, resolvedOptions.EndPoints);
+            Assert.Equal(configuredOptions.RootKey, resolvedOptions.RootKey);
+            Assert.Equal(configuredOptions.RefreshInterval, resolvedOptions.RefreshInterval);
+            Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
+            Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);
+            Assert.Equal(configuredOptions.UseInsecureChannels, resolvedOptions.UseInsecureChannels);
+        }
 
         var timeProviderDescriptor = Assert.Single(
             services,
@@ -180,7 +193,18 @@ public class EtcdConfigurationProviderExtensionsTest
         var optionsDescriptor = Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(EtcdOptions));
-        Assert.Same(configuredOptions, optionsDescriptor.ImplementationInstance);
+        Assert.NotNull(optionsDescriptor.ImplementationFactory);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            var resolvedOptions = provider.GetRequiredService<EtcdOptions>();
+            Assert.Equal(configuredOptions!.EndPoints, resolvedOptions.EndPoints);
+            Assert.Equal(configuredOptions.RootKey, resolvedOptions.RootKey);
+            Assert.Equal(configuredOptions.RefreshInterval, resolvedOptions.RefreshInterval);
+            Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
+            Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);
+            Assert.Equal(configuredOptions.UseInsecureChannels, resolvedOptions.UseInsecureChannels);
+        }
 
         var timeProviderDescriptor = Assert.Single(
             services,
@@ -231,17 +255,30 @@ public class EtcdConfigurationProviderExtensionsTest
     }
 
     [Fact]
-    public void ApplicationBuilder_AddEtcdConfiguration_ThrowsWhenOptionsAreInvalid()
+    public void ApplicationBuilder_AddEtcdConfiguration_RegistersDataAnnotationValidation()
     {
         var builder = new CapturingHostApplicationBuilder();
 
-        Assert.Throws<InvalidOperationException>(() =>
-            builder.AddEtcdConfiguration(options => options.EndPoints = string.Empty));
+        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.Zero);
 
-        Assert.Empty(builder.Services);
-        Assert.DoesNotContain(
-            builder.Configuration.Sources,
-            source => source is EtcdConfigurationSource);
+        using var provider = builder.Services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<EtcdOptions>());
+        Assert.Contains("RefreshInterval", exception.Message);
+    }
+
+    [Fact]
+    public async Task ApplicationBuilder_AddEtcdConfiguration_ValidatesOptionsOnStart()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.Zero);
+
+        using var host = builder.Build();
+
+        var exception = await Assert.ThrowsAsync<OptionsValidationException>(
+            () => host.StartAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("RefreshInterval", exception.Message);
     }
 
     private sealed class CapturingHostApplicationBuilder : IHostApplicationBuilder
