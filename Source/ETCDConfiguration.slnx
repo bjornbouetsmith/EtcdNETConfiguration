@@ -7,6 +7,12 @@
   </Folder>
   <Folder Name="/Solution Items/Docker/">
     <File Path="docker-compose.yml" />
+    <File Path="docker-compose.tls.yml" />
+  </Folder>
+  <Folder Name="/Solution Items/Docker/TLS Certificates/">
+    <File Path="certs/.gitignore" />
+    <File Path="certs/README.md" />
+    <File Path="certs/generate-certs.sh" />
   </Folder>
   <Folder Name="/Solution Items/Docs/">
     <File Path="../LICENSE" />

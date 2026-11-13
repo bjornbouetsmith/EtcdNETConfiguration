@@ -143,6 +143,7 @@ public static class EtcdConfigurationProviderExtensions
         target.ConfigurationTimeout = source.ConfigurationTimeout;
         target.RedactConfigurationValues = source.RedactConfigurationValues;
         target.UseInsecureChannels = source.UseInsecureChannels;
+        target.ServerCertificateAuthorityPath = source.ServerCertificateAuthorityPath;
     }
 
     /// <summary>
@@ -155,5 +156,7 @@ public static class EtcdConfigurationProviderExtensions
     {
         clientOptions.ConnectionString = etcdOptions.EndPoints;
         clientOptions.UseInsecureChannel = etcdOptions.UseInsecureChannels;
+        clientOptions.ConfigureChannel = channelOptions =>
+            EtcdClientFactory.ConfigureChannel(etcdOptions, channelOptions);
     }
 }

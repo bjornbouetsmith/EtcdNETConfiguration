@@ -16,6 +16,8 @@ public class EtcdOptionsTest
         Assert.Equal("/configuration", options.RootKey);
         Assert.Equal(TimeSpan.FromMinutes(1), options.RefreshInterval);
         Assert.True(options.RedactConfigurationValues);
+        Assert.True(options.UseInsecureChannels);
+        Assert.Null(options.ServerCertificateAuthorityPath);
     }
 
     [Fact]
@@ -26,13 +28,17 @@ public class EtcdOptionsTest
             EndPoints = "http://localhost:2379,http://localhost:2380",
             RootKey = "/custom-root",
             RefreshInterval = TimeSpan.FromSeconds(30),
-            RedactConfigurationValues = false
+            RedactConfigurationValues = false,
+            UseInsecureChannels = false,
+            ServerCertificateAuthorityPath = "/certs/ca.crt"
         };
 
         Assert.Equal("http://localhost:2379,http://localhost:2380", options.EndPoints);
         Assert.Equal("/custom-root", options.RootKey);
         Assert.Equal(TimeSpan.FromSeconds(30), options.RefreshInterval);
         Assert.False(options.RedactConfigurationValues);
+        Assert.False(options.UseInsecureChannels);
+        Assert.Equal("/certs/ca.crt", options.ServerCertificateAuthorityPath);
     }
 
     [Fact]

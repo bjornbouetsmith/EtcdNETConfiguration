@@ -98,6 +98,26 @@ Validation runs when the options are first resolved and through `ValidateOnStart
 | `ConfigurationTimeout` | 1 second | Must be between 1 second and 60 seconds, inclusive. |
 | `RedactConfigurationValues` | `true` | No validation. |
 | `UseInsecureChannels` | `true` | No validation. |
+| `ServerCertificateAuthorityPath` | `null` | No validation. Path to a PEM CA used when `UseInsecureChannels` is `false`. |
+
+### Connecting over TLS
+
+Set `UseInsecureChannels` to `false` and point `EndPoints` at an `https://` URL.
+If the server certificate is signed by a private CA, also set
+`ServerCertificateAuthorityPath` to the PEM file containing that CA:
+
+```csharp
+builder.AddEtcdConfiguration(options =>
+{
+    options.EndPoints = "https://127.0.0.1:2379";
+    options.UseInsecureChannels = false;
+    options.ServerCertificateAuthorityPath = "/certs/ca.crt";
+});
+```
+
+When `ServerCertificateAuthorityPath` is not set, the operating system trust
+store is used. The gRPC channel is always configured with
+`ChannelCredentials.SecureSsl` when `UseInsecureChannels` is `false`.
 
 ### Supported TimeSpan ranges
 
@@ -127,6 +147,21 @@ Because polling is disabled, changes made in etcd after startup will not be refl
 Tests are a mix of unit tests and integration tests that uses a real etcd server.
 
 Tests will auto start the etcd docker container, but it requires that a docker runtime is available.
+
+TLS integration tests additionally start `Source/docker-compose.tls.yml`. The self-signed
+test certificates are generated automatically by the test assembly when they are missing
+or older than one day. On Linux/macOS `openssl` is used directly; on Windows the
+generation runs in an Alpine Docker container because `bash` and `openssl` are usually
+not installed there. The container image can be overridden with
+`ETCD_TLS_CERT_DOCKER_IMAGE`. The generated files are git-ignored.
+
+The tests run against `https://127.0.0.1:12379` and can be pointed at an external
+TLS-enabled etcd by setting:
+
+```text
+ETCD_TLS_ENDPOINT=https://my-etcd:2379
+ETCD_TLS_CA_CERT=/path/to/ca.crt
+```
 
 ## Warning
 When using this library do not use `localhost` as the hostname for the etcd service. This can cause extreme delays because the DNS resolution returns an IP address family that the service is potentially not listening on.

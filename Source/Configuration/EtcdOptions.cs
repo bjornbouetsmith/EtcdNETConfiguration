@@ -75,4 +75,11 @@ public record EtcdOptions
     /// Defaults to true, enabling unencrypted connections.
     /// </summary>
     public bool UseInsecureChannels { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the path to a PEM-encoded CA certificate used to validate the etcd server certificate.
+    /// Only used when <see cref="UseInsecureChannels"/> is false. When null or empty, the operating
+    /// system certificate trust store is used.
+    /// </summary>
+    public string? ServerCertificateAuthorityPath { get; set; }
 }
