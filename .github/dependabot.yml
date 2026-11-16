@@ -17,34 +17,39 @@ updates:
     labels:
       - "dependencies"
       - "nuget"
+    # Only open PRs for minor and patch version updates. Major updates are
+    # deliberately not automated and must be done by hand.
+    #
+    # `allow` is what enforces this. The `update-types` key under `groups`
+    # only decides which PR a matching update lands in - it does not stop
+    # Dependabot from opening a PR for updates that fall outside a group,
+    # which is why major bumps used to show up as individual PRs.
+    #
+    # `update-types` with `allow` applies to version updates only, so
+    # security updates are still created, even when they require a major bump.
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     groups:
       # Keep the Microsoft.Extensions.* packages in a single PR so their
       # versions stay in sync.
       microsoft-extensions:
         patterns:
           - "Microsoft.Extensions.*"
-        update-types:
-          - "minor"
-          - "patch"
       # Group test and coverage tooling updates together.
       test-tooling:
         patterns:
           - "xunit*"
-          - "Microsoft.NET.Test.Sdk"
+          - "Microsoft.Testing.Extensions.CodeCoverage"
           - "Moq"
           - "coverlet*"
           - "altcover"
-        update-types:
-          - "minor"
-          - "patch"
       # Everything else: one PR for all remaining minor/patch updates.
-      # Major updates are left as individual PRs for manual review.
       minor-and-patch:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
 
   # GitHub Actions used in .github/workflows, including the shared-pipelines
   # reusable workflows and the publish-nuget composite action.
@@ -62,6 +67,12 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    # Same rule as NuGet: minor and patch only, no major action bumps.
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     groups:
       # One PR for all action/workflow version bumps.
       github-actions:
