@@ -17,21 +17,26 @@ updates:
     labels:
       - "dependencies"
       - "nuget"
-    # Only open PRs for minor and patch version updates. Major updates are
-    # deliberately not automated and must be done by hand.
+    # Only minor and patch updates are automated; major bumps are done by hand.
     #
-    # `allow` is what enforces this. The `update-types` key under `groups`
-    # only decides which PR a matching update lands in - it does not stop
-    # Dependabot from opening a PR for updates that fall outside a group,
-    # which is why major bumps used to show up as individual PRs.
+    # `ignore` is what enforces this. It is applied while Dependabot resolves
+    # candidate versions, so a major release is never considered at all -
+    # neither for a grouped PR nor for an individual one.
     #
-    # `update-types` with `allow` applies to version updates only, so
-    # security updates are still created, even when they require a major bump.
-    allow:
+    # Do not express this with `allow` + `update-types` (or with `update-types`
+    # on groups). Both read as "minor and patch only", but neither is enforced
+    # on the grouped-update path: Dependabot parses the rule into
+    # `allowed-updates`, then ignores it and still bumps to the next major
+    # version. `ignore` is applied per dependency and is independent of how
+    # updates are grouped, so it keeps working whatever the groups look like.
+    #
+    # Caveat: this also suppresses *security* updates that would need a major
+    # bump. Advisories are still reported on the Dependabot alerts page, so
+    # those can be handled manually if it ever matters.
+    ignore:
       - dependency-name: "*"
         update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
+          - "version-update:semver-major"
     groups:
       # Keep the Microsoft.Extensions.* packages in a single PR so their
       # versions stay in sync.
@@ -46,7 +51,7 @@ updates:
           - "Moq"
           - "coverlet*"
           - "altcover"
-      # Everything else: one PR for all remaining minor/patch updates.
+      # Everything else: one PR for the remaining updates.
       minor-and-patch:
         patterns:
           - "*"
@@ -67,14 +72,13 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
-    # Same rule as NuGet: minor and patch only, no major action bumps.
-    allow:
+    # Same rule as NuGet: no major action bumps.
+    ignore:
       - dependency-name: "*"
         update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
+          - "version-update:semver-major"
     groups:
-      # One PR for all action/workflow version bumps.
+      # One PR for all action/workflow version updates.
       github-actions:
         patterns:
           - "*"
