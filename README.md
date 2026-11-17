@@ -97,27 +97,33 @@ Validation runs when the options are first resolved and through `ValidateOnStart
 | `RefreshInterval` | 1 minute | Must be between `TimeSpan.Zero` and 24 hours, inclusive. `TimeSpan.Zero` disables background polling. |
 | `ConfigurationTimeout` | 1 second | Must be between 1 second and 60 seconds, inclusive. |
 | `RedactConfigurationValues` | `true` | No validation. |
-| `UseInsecureChannels` | `true` | No validation. |
-| `ServerCertificateAuthorityPath` | `null` | No validation. Path to a PEM CA used when `UseInsecureChannels` is `false`. |
+| `SslOptions` | `null` | No validation. When `null` or `SslOptions.UseSsl` is `false`, the connection is unencrypted. |
+| `SslOptions.UseSsl` | `false` | No validation. |
+| `SslOptions.ServerCertificateAuthorityPath` | `null` | No validation. Path to a PEM CA used when `UseSsl` is `true`. |
 
 ### Connecting over TLS
 
-Set `UseInsecureChannels` to `false` and point `EndPoints` at an `https://` URL.
+Set `SslOptions.UseSsl` to `true` and point `EndPoints` at an `https://` URL.
 If the server certificate is signed by a private CA, also set
-`ServerCertificateAuthorityPath` to the PEM file containing that CA:
+`SslOptions.ServerCertificateAuthorityPath` to the PEM file containing that CA:
 
 ```csharp
 builder.AddEtcdConfiguration(options =>
 {
     options.EndPoints = "https://127.0.0.1:2379";
-    options.UseInsecureChannels = false;
-    options.ServerCertificateAuthorityPath = "/certs/ca.crt";
+    options.SslOptions = new SslOptions
+    {
+        UseSsl = true,
+        ServerCertificateAuthorityPath = "/certs/ca.crt"
+    };
 });
 ```
 
-When `ServerCertificateAuthorityPath` is not set, the operating system trust
-store is used. The gRPC channel is always configured with
-`ChannelCredentials.SecureSsl` when `UseInsecureChannels` is `false`.
+When `SslOptions` is `null` or `SslOptions.UseSsl` is `false`, the gRPC channel
+is configured with `ChannelCredentials.Insecure`. When `UseSsl` is `true`, the
+channel uses `ChannelCredentials.SecureSsl`. When
+`ServerCertificateAuthorityPath` is not set, the operating system trust store
+is used.
 
 ### Supported TimeSpan ranges
 

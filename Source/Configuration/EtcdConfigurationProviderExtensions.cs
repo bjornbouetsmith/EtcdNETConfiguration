@@ -142,20 +142,19 @@ public static class EtcdConfigurationProviderExtensions
         target.RefreshInterval = source.RefreshInterval;
         target.ConfigurationTimeout = source.ConfigurationTimeout;
         target.RedactConfigurationValues = source.RedactConfigurationValues;
-        target.UseInsecureChannels = source.UseInsecureChannels;
-        target.ServerCertificateAuthorityPath = source.ServerCertificateAuthorityPath;
+        target.SslOptions = source.SslOptions is null ? null : source.SslOptions with { };
     }
 
     /// <summary>
     /// Configures the gRPC etcd client with options from the provided configuration.
-    /// Sets the connection string and determines whether to use insecure channels.
+    /// Sets the connection string and determines whether to use SSL.
     /// </summary>
     /// <param name="etcdOptions">The etcd options containing endpoint and security settings.</param>
     /// <param name="clientOptions">The gRPC client options to configure with etcd-specific values.</param>
     internal static void ConfigureEtcdClient(EtcdOptions etcdOptions, EtcdClientOptions clientOptions)
     {
         clientOptions.ConnectionString = etcdOptions.EndPoints;
-        clientOptions.UseInsecureChannel = etcdOptions.UseInsecureChannels;
+        clientOptions.UseInsecureChannel = etcdOptions.SslOptions?.UseSsl != true;
         clientOptions.ConfigureChannel = channelOptions =>
             EtcdClientFactory.ConfigureChannel(etcdOptions, channelOptions);
     }

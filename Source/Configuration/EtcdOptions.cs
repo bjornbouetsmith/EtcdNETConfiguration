@@ -71,15 +71,8 @@ public record EtcdOptions
     public bool RedactConfigurationValues { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets whether to use insecure HTTP (instead of HTTPS) when communicating with etcd endpoints.
-    /// Defaults to true, enabling unencrypted connections.
+    /// Gets or sets the TLS settings used when communicating with etcd endpoints.
+    /// When null or <see cref="SslOptions.UseSsl"/> is false, the connection is unencrypted.
     /// </summary>
-    public bool UseInsecureChannels { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the path to a PEM-encoded CA certificate used to validate the etcd server certificate.
-    /// Only used when <see cref="UseInsecureChannels"/> is false. When null or empty, the operating
-    /// system certificate trust store is used.
-    /// </summary>
-    public string? ServerCertificateAuthorityPath { get; set; }
+    public SslOptions? SslOptions { get; set; }
 }

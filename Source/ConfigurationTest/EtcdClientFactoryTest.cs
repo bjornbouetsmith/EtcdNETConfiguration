@@ -9,12 +9,12 @@ namespace ROOT.Etcd.ConfigurationTest;
 public class EtcdClientFactoryTest
 {
     [Fact]
-    public void ConfigureChannel_WhenInsecureChannelsAreEnabled_UsesInsecureCredentials()
+    public void ConfigureChannel_WhenSslIsDisabled_UsesInsecureCredentials()
     {
         var channelOptions = new GrpcChannelOptions();
 
         EtcdClientFactory.ConfigureChannel(
-            new EtcdOptions { UseInsecureChannels = true },
+            new EtcdOptions { SslOptions = new SslOptions { UseSsl = false } },
             channelOptions);
 
         Assert.Same(ChannelCredentials.Insecure, channelOptions.Credentials);
@@ -22,12 +22,23 @@ public class EtcdClientFactoryTest
     }
 
     [Fact]
-    public void ConfigureChannel_WhenInsecureChannelsAreDisabled_UsesSecureCredentials()
+    public void ConfigureChannel_WhenSslOptionsAreNotProvided_UsesInsecureCredentials()
+    {
+        var channelOptions = new GrpcChannelOptions();
+
+        EtcdClientFactory.ConfigureChannel(new EtcdOptions(), channelOptions);
+
+        Assert.Same(ChannelCredentials.Insecure, channelOptions.Credentials);
+        Assert.Null(channelOptions.HttpHandler);
+    }
+
+    [Fact]
+    public void ConfigureChannel_WhenSslIsEnabled_UsesSecureCredentials()
     {
         var channelOptions = new GrpcChannelOptions();
 
         EtcdClientFactory.ConfigureChannel(
-            new EtcdOptions { UseInsecureChannels = false },
+            new EtcdOptions { SslOptions = new SslOptions { UseSsl = true } },
             channelOptions);
 
         Assert.Same(ChannelCredentials.SecureSsl, channelOptions.Credentials);
@@ -42,8 +53,11 @@ public class EtcdClientFactoryTest
         EtcdClientFactory.ConfigureChannel(
             new EtcdOptions
             {
-                UseInsecureChannels = false,
-                ServerCertificateAuthorityPath = GetCaCertificatePath()
+                SslOptions = new SslOptions
+                {
+                    UseSsl = true,
+                    ServerCertificateAuthorityPath = GetCaCertificatePath()
+                }
             },
             channelOptions);
 
@@ -52,15 +66,18 @@ public class EtcdClientFactoryTest
     }
 
     [Fact]
-    public void ConfigureChannel_WhenInsecureChannelsAreEnabled_DoesNotInstallTlsHandler()
+    public void ConfigureChannel_WhenSslIsDisabled_DoesNotInstallTlsHandler()
     {
         var channelOptions = new GrpcChannelOptions();
 
         EtcdClientFactory.ConfigureChannel(
             new EtcdOptions
             {
-                UseInsecureChannels = true,
-                ServerCertificateAuthorityPath = GetCaCertificatePath()
+                SslOptions = new SslOptions
+                {
+                    UseSsl = false,
+                    ServerCertificateAuthorityPath = GetCaCertificatePath()
+                }
             },
             channelOptions);
 
