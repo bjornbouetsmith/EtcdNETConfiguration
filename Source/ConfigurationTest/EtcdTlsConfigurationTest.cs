@@ -19,7 +19,7 @@ public class EtcdTlsConfigurationTest : IntegrationTestBase
     }
 
     [Fact, Trait("Category", "Integration")]
-    public async Task ShouldConnectAndLoadConfigurationOverTls_WhenInsecureChannelsAreDisabled()
+    public async Task ShouldConnectAndLoadConfigurationOverTls_WhenSslIsEnabled()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
 
@@ -45,8 +45,11 @@ public class EtcdTlsConfigurationTest : IntegrationTestBase
         {
             options.EndPoints = TlsEtcdServer;
             options.RootKey = rootKey;
-            options.UseInsecureChannels = false;
-            options.ServerCertificateAuthorityPath = CaCertificatePath;
+            options.SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ServerCertificateAuthorityPath = CaCertificatePath
+            };
             options.RefreshInterval = TimeSpan.Zero;
         });
 
@@ -60,7 +63,7 @@ public class EtcdTlsConfigurationTest : IntegrationTestBase
             Assert.Equal("tls-host-2", configuration[$"{rootKey}:Kafka:BootStrapServers:1"]);
 
             // Read the values back through the client too, proving the TLS channel
-            // can perform both writes and reads when InsecureChannels is disabled.
+            // can perform both writes and reads when SSL is enabled.
             var range = await client.GetAsync($"{rootKey}:Kafka:BootStrapServers:0", cancellationToken: cancellationToken);
             var stored = Assert.Single(range.Kvs);
             Assert.Equal("tls-host-1", stored.Value.ToStringUtf8());

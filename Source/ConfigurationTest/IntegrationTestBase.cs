@@ -151,7 +151,7 @@ public abstract class IntegrationTestBase
     }
 
     /// <summary>
-    /// Creates a client through the library factory with insecure channels disabled and
+    /// Creates a client through the library factory with SSL enabled and
     /// the test CA used to validate the server certificate.
     /// </summary>
     public IEtcdClient CreateTlsClient()
@@ -159,8 +159,11 @@ public abstract class IntegrationTestBase
         return new EtcdClientFactory().CreateClient(new EtcdOptions
         {
             EndPoints = TlsEtcdServer,
-            UseInsecureChannels = false,
-            ServerCertificateAuthorityPath = CaCertificatePath
+            SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ServerCertificateAuthorityPath = CaCertificatePath
+            }
         });
     }
 }

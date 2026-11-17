@@ -35,11 +35,13 @@ public class EtcdClientFactory : IEtcdClientFactory
     /// <summary>
     /// Configures the gRPC channel with credentials based on security settings.
     /// </summary>
-    /// <param name="options">Etcd options including the UseInsecureChannels setting.</param>
+    /// <param name="options">Etcd options including the SslOptions settings.</param>
     /// <param name="channelOptions">The channel options to configure.</param>
     internal static void ConfigureChannel(EtcdOptions options, GrpcChannelOptions channelOptions)
     {
-        if (options.UseInsecureChannels)
+        var sslOptions = options.SslOptions;
+
+        if (sslOptions is null || !sslOptions.UseSsl)
         {
             channelOptions.Credentials = ChannelCredentials.Insecure;
             return;
@@ -47,9 +49,9 @@ public class EtcdClientFactory : IEtcdClientFactory
 
         channelOptions.Credentials = ChannelCredentials.SecureSsl;
 
-        if (!string.IsNullOrWhiteSpace(options.ServerCertificateAuthorityPath))
+        if (!string.IsNullOrWhiteSpace(sslOptions.ServerCertificateAuthorityPath))
         {
-            channelOptions.HttpHandler = CreateTlsHttpHandler(options.ServerCertificateAuthorityPath);
+            channelOptions.HttpHandler = CreateTlsHttpHandler(sslOptions.ServerCertificateAuthorityPath);
         }
     }
 

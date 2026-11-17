@@ -52,6 +52,11 @@ public class EtcdConfigurationProviderExtensionsTest
         builder.AddEtcdConfiguration(options =>
         {
             options.EndPoints = "http://localhost:2379";
+            options.SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ServerCertificateAuthorityPath = "ca.crt"
+            };
             configuredOptions = options;
         });
 
@@ -73,8 +78,7 @@ public class EtcdConfigurationProviderExtensionsTest
             Assert.Equal(configuredOptions.RefreshInterval, resolvedOptions.RefreshInterval);
             Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
             Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);
-            Assert.Equal(configuredOptions.UseInsecureChannels, resolvedOptions.UseInsecureChannels);
-            Assert.Equal(configuredOptions.ServerCertificateAuthorityPath, resolvedOptions.ServerCertificateAuthorityPath);
+            Assert.Equal(configuredOptions.SslOptions, resolvedOptions.SslOptions);
         }
 
         var timeProviderDescriptor = Assert.Single(
@@ -119,27 +123,38 @@ public class EtcdConfigurationProviderExtensionsTest
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void ConfigureEtcdClient_UsesTheConfiguredInsecureChannelSetting(bool useInsecureChannels)
+    public void ConfigureEtcdClient_UsesTheConfiguredSslSetting(bool useSsl)
     {
         var etcdOptions = new EtcdOptions
         {
             EndPoints = "https://etcd:2379",
-            UseInsecureChannels = useInsecureChannels
+            SslOptions = new SslOptions { UseSsl = useSsl }
         };
         var clientOptions = new EtcdClientOptions();
 
         EtcdConfigurationProviderExtensions.ConfigureEtcdClient(etcdOptions, clientOptions);
 
         Assert.Equal(etcdOptions.EndPoints, clientOptions.ConnectionString);
-        Assert.Equal(useInsecureChannels, clientOptions.UseInsecureChannel);
+        Assert.Equal(!useSsl, clientOptions.UseInsecureChannel);
         Assert.NotNull(clientOptions.ConfigureChannel);
 
         var channelOptions = new Grpc.Net.Client.GrpcChannelOptions();
         clientOptions.ConfigureChannel!(channelOptions);
 
         Assert.Equal(
-            useInsecureChannels ? Grpc.Core.ChannelCredentials.Insecure : Grpc.Core.ChannelCredentials.SecureSsl,
+            useSsl ? Grpc.Core.ChannelCredentials.SecureSsl : Grpc.Core.ChannelCredentials.Insecure,
             channelOptions.Credentials);
+    }
+
+    [Fact]
+    public void ConfigureEtcdClient_WhenSslOptionsAreNotProvided_UsesInsecureChannel()
+    {
+        var etcdOptions = new EtcdOptions { EndPoints = "http://etcd:2379" };
+        var clientOptions = new EtcdClientOptions();
+
+        EtcdConfigurationProviderExtensions.ConfigureEtcdClient(etcdOptions, clientOptions);
+
+        Assert.True(clientOptions.UseInsecureChannel);
     }
 
     [Fact]
@@ -148,8 +163,11 @@ public class EtcdConfigurationProviderExtensionsTest
         var etcdOptions = new EtcdOptions
         {
             EndPoints = "https://etcd:2379",
-            UseInsecureChannels = false,
-            ServerCertificateAuthorityPath = "ca.crt"
+            SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ServerCertificateAuthorityPath = "ca.crt"
+            }
         };
         var clientOptions = new EtcdClientOptions();
 
@@ -211,6 +229,11 @@ public class EtcdConfigurationProviderExtensionsTest
         builder.AddEtcdConfiguration(options =>
         {
             options.EndPoints = "http://localhost:2379";
+            options.SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ServerCertificateAuthorityPath = "ca.crt"
+            };
             configuredOptions = options;
         });
 
@@ -229,8 +252,7 @@ public class EtcdConfigurationProviderExtensionsTest
             Assert.Equal(configuredOptions.RefreshInterval, resolvedOptions.RefreshInterval);
             Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
             Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);
-            Assert.Equal(configuredOptions.UseInsecureChannels, resolvedOptions.UseInsecureChannels);
-            Assert.Equal(configuredOptions.ServerCertificateAuthorityPath, resolvedOptions.ServerCertificateAuthorityPath);
+            Assert.Equal(configuredOptions.SslOptions, resolvedOptions.SslOptions);
         }
 
         var timeProviderDescriptor = Assert.Single(
