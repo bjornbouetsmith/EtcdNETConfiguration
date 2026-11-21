@@ -125,6 +125,12 @@ TLS startup fails when any of the following is true:
 The initial configuration load also fails fast. If etcd cannot be reached or TLS
 or authentication fails, the host does not start with empty configuration.
 
+`AddEtcdConfiguration` registers `IEtcdClient` with `TryAddSingleton`. When TLS is
+configured, a pre-existing `IEtcdClient` registration fails startup because it
+would silently bypass the TLS-configured client. Register `AddEtcdConfiguration`
+before any other `IEtcdClient` registration. A registration added after this call
+can still replace the client, so keep the TLS configuration authoritative.
+
 ### Connecting over TLS
 
 Set `SslOptions.UseSsl` to `true` and point `EndPoints` at an `https://` URL.
