@@ -2,6 +2,7 @@
 using dotnet_etcd.interfaces;
 using Grpc.Core;
 using Grpc.Net.Client;
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Security;
@@ -55,36 +56,83 @@ public class EtcdClientFactory : IEtcdClientFactory
 
         channelOptions.Credentials = ChannelCredentials.SecureSsl;
 
-        if (!string.IsNullOrWhiteSpace(sslOptions.ServerCertificateAuthorityPath))
+        if (!EtcdTlsOptionsValidator.HasCustomTlsMaterial(sslOptions))
         {
-            channelOptions.HttpHandler = CreateTlsHttpHandler(sslOptions.ServerCertificateAuthorityPath);
+            return;
         }
+
+        channelOptions.HttpHandler = CreateTlsHttpHandler(sslOptions);
+        channelOptions.DisposeHttpClient = true;
     }
 
     /// <summary>
-    /// Creates an HTTP handler that trusts the CA certificate at <paramref name="caCertificatePath"/>
-    /// when validating the etcd server certificate.
+    /// Creates an HTTP handler that carries the custom CA trust and/or client certificate.
+    /// Certificates loaded from disk are owned by the handler and disposed with it.
     /// </summary>
-    /// <param name="caCertificatePath">Path to a PEM-encoded CA certificate.</param>
-    /// <returns>A handler configured with custom server certificate validation.</returns>
-    private static SocketsHttpHandler CreateTlsHttpHandler(string caCertificatePath)
+    private static HttpMessageHandler CreateTlsHttpHandler(SslOptions sslOptions)
     {
-        var caCertificate = X509CertificateLoader.LoadCertificateFromFile(caCertificatePath);
+        var ownedCertificates = new List<X509Certificate2>();
+        SocketsHttpHandler? socketsHandler = null;
 
-        return new SocketsHttpHandler
+        try
         {
-            KeepAlivePingDelay = System.TimeSpan.FromSeconds(30),
-            KeepAlivePingTimeout = System.TimeSpan.FromSeconds(30),
-            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-            SslOptions = new SslClientAuthenticationOptions
+            socketsHandler = new SocketsHttpHandler
             {
-                // gRPC always runs over HTTP/2, and setting ALPN explicitly is required
-                // on some platforms (notably Windows/Schannel).
-                ApplicationProtocols = new List<SslApplicationProtocol> { SslApplicationProtocol.Http2 },
-                RemoteCertificateValidationCallback = (_, certificate, _, sslPolicyErrors) =>
-                    ValidateServerCertificate(certificate, caCertificate, sslPolicyErrors)
+                KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
+                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+                SslOptions = new SslClientAuthenticationOptions
+                {
+                    // gRPC always runs over HTTP/2, and setting ALPN explicitly is required
+                    // on some platforms (notably Windows/Schannel).
+                    ApplicationProtocols = new List<SslApplicationProtocol> { SslApplicationProtocol.Http2 }
+                }
+            };
+
+            X509Certificate2? caCertificate = null;
+            if (!string.IsNullOrWhiteSpace(sslOptions.ServerCertificateAuthorityPath))
+            {
+                caCertificate = EtcdTlsCertificateLoader.LoadCertificateAuthority(
+                    sslOptions.ServerCertificateAuthorityPath);
+                ownedCertificates.Add(caCertificate);
+
+                socketsHandler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, sslPolicyErrors) =>
+                    ValidateServerCertificate(certificate, caCertificate, sslPolicyErrors);
             }
-        };
+
+            if (sslOptions.ClientCertificate is not null)
+            {
+                // Caller-owned: never track or dispose this certificate.
+                socketsHandler.SslOptions.ClientCertificates = new X509CertificateCollection
+                {
+                    sslOptions.ClientCertificate
+                };
+            }
+            else if (!string.IsNullOrWhiteSpace(sslOptions.ClientCertificatePath))
+            {
+                var clientCertificates = EtcdTlsCertificateLoader.LoadClientCertificates(sslOptions);
+                foreach (var certificate in clientCertificates)
+                {
+                    ownedCertificates.Add(certificate);
+                }
+
+                socketsHandler.SslOptions.ClientCertificates = new X509CertificateCollection(clientCertificates);
+            }
+
+            return new CertificateOwningHandler(socketsHandler, ownedCertificates);
+        }
+        catch
+        {
+            socketsHandler?.Dispose();
+
+            foreach (var certificate in ownedCertificates)
+            {
+                certificate.Dispose();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -115,5 +163,27 @@ public class EtcdClientFactory : IEtcdClientFactory
         chain.ChainPolicy.DisableCertificateDownloads = true;
 
         return chain.Build(serverCertificate);
+    }
+
+    /// <summary>
+    /// Disposes certificates loaded by the library when the handler is disposed.
+    /// Caller-supplied certificates are not included in this list.
+    /// </summary>
+    private sealed class CertificateOwningHandler(
+        HttpMessageHandler innerHandler,
+        IReadOnlyList<X509Certificate2> ownedCertificates) : DelegatingHandler(innerHandler)
+    {
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                foreach (var certificate in ownedCertificates)
+                {
+                    certificate.Dispose();
+                }
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }
