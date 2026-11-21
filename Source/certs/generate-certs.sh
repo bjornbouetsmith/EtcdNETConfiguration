@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Generates the self-signed CA and etcd server certificate used by
-# docker-compose.tls.yml and the TLS integration tests.
+# Generates the self-signed CA, etcd server certificate, and client
+# certificate used by docker-compose.tls.yml, docker-compose.mtls.yml, and the
+# TLS/mTLS integration tests.
 #
 # These certificates are for local development and tests only. Never use them
 # in production.
@@ -36,7 +37,21 @@ EOF
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out server.crt -days "$DAYS" -sha256 -extfile server.ext
 
-rm -f server.csr server.ext ca.srl
-chmod 600 ca.key server.key
+echo "Generating etcd client certificate..."
+openssl genrsa -out client.key 2048
+openssl req -new -key client.key -subj "/CN=etcd-client" -out client.csr
 
-echo "Done. Generated ca.crt, server.crt and server.key."
+cat > client.ext <<'EOF'
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth
+subjectAltName=DNS:etcd-client
+EOF
+
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -out client.crt -days "$DAYS" -sha256 -extfile client.ext
+
+rm -f server.csr server.ext client.csr client.ext ca.srl
+chmod 600 ca.key server.key client.key
+
+echo "Done. Generated ca.crt, server.crt, server.key, client.crt and client.key."

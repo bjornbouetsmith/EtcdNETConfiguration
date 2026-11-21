@@ -37,10 +37,38 @@ internal static class EtcdTlsCertificateLoader
             return new X509Certificate2Collection { certificate };
         }
 
+        // Schannel cannot use ephemeral private keys. Use a temporary user key
+        // container on Windows instead; without PersistKeySet the key is removed
+        // when the certificate is disposed, which the owning handler guarantees.
+        var keyStorageFlags = OperatingSystem.IsWindows()
+            ? X509KeyStorageFlags.UserKeySet
+            : X509KeyStorageFlags.EphemeralKeySet;
+
         return X509CertificateLoader.LoadPkcs12CollectionFromFile(
             certificatePath,
             sslOptions.ClientCertificatePassword,
-            X509KeyStorageFlags.EphemeralKeySet);
+            keyStorageFlags);
+    }
+
+    /// <summary>
+    /// Loads the client certificate that carries the private key and disposes any
+    /// additional chain certificates. The caller owns and must dispose the result.
+    /// </summary>
+    internal static X509Certificate2 LoadClientCertificate(SslOptions sslOptions)
+    {
+        var certificates = LoadClientCertificates(sslOptions);
+        var certificate = FindCertificateWithPrivateKey(certificates)
+            ?? throw new InvalidOperationException("The client certificate does not contain a private key.");
+
+        foreach (var otherCertificate in certificates)
+        {
+            if (!ReferenceEquals(otherCertificate, certificate))
+            {
+                otherCertificate.Dispose();
+            }
+        }
+
+        return certificate;
     }
 
     /// <summary>
@@ -72,8 +100,10 @@ internal static class EtcdTlsCertificateLoader
     }
 
     /// <summary>
-    /// PEM-loaded certificates use ephemeral keys, which Schannel can reject. Re-import
-    /// through PKCS#12 on Windows and clear the exported buffer afterwards.
+    /// PEM-loaded certificates use ephemeral keys, which Schannel cannot use. Re-import
+    /// through PKCS#12 on Windows and clear the exported buffer afterwards. The temporary
+    /// user key container is removed when the certificate is disposed because PersistKeySet
+    /// is not set.
     /// </summary>
     private static X509Certificate2 MakePemCertificateUsableOnWindows(X509Certificate2 certificate)
     {
@@ -87,7 +117,7 @@ internal static class EtcdTlsCertificateLoader
         {
             pfx = certificate.Export(X509ContentType.Pkcs12);
             certificate.Dispose();
-            return X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.EphemeralKeySet);
+            return X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
         }
         finally
         {
