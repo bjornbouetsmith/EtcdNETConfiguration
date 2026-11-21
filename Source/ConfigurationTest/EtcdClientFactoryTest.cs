@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Grpc.Net.Client;
+using Microsoft.Extensions.Options;
 using ROOT.Etcd.Configuration;
 using System.IO;
 using System.Net.Http;
@@ -38,7 +39,11 @@ public class EtcdClientFactoryTest
         var channelOptions = new GrpcChannelOptions();
 
         EtcdClientFactory.ConfigureChannel(
-            new EtcdOptions { SslOptions = new SslOptions { UseSsl = true } },
+            new EtcdOptions
+            {
+                EndPoints = "https://127.0.0.1:2379",
+                SslOptions = new SslOptions { UseSsl = true }
+            },
             channelOptions);
 
         Assert.Same(ChannelCredentials.SecureSsl, channelOptions.Credentials);
@@ -53,6 +58,7 @@ public class EtcdClientFactoryTest
         EtcdClientFactory.ConfigureChannel(
             new EtcdOptions
             {
+                EndPoints = "https://127.0.0.1:2379",
                 SslOptions = new SslOptions
                 {
                     UseSsl = true,
@@ -66,23 +72,34 @@ public class EtcdClientFactoryTest
     }
 
     [Fact]
-    public void ConfigureChannel_WhenSslIsDisabled_DoesNotInstallTlsHandler()
+    public void ConfigureChannel_WhenSslIsDisabledWithTlsSettings_Throws()
     {
         var channelOptions = new GrpcChannelOptions();
 
-        EtcdClientFactory.ConfigureChannel(
-            new EtcdOptions
-            {
-                SslOptions = new SslOptions
+        Assert.Throws<OptionsValidationException>(() =>
+            EtcdClientFactory.ConfigureChannel(
+                new EtcdOptions
                 {
-                    UseSsl = false,
-                    ServerCertificateAuthorityPath = GetCaCertificatePath()
-                }
-            },
-            channelOptions);
+                    EndPoints = "http://127.0.0.1:2379",
+                    SslOptions = new SslOptions
+                    {
+                        UseSsl = false,
+                        ServerCertificateAuthorityPath = GetCaCertificatePath()
+                    }
+                },
+                channelOptions));
+    }
 
-        Assert.Same(ChannelCredentials.Insecure, channelOptions.Credentials);
-        Assert.Null(channelOptions.HttpHandler);
+    [Fact]
+    public void CreateClient_WithInvalidTlsOptions_Throws()
+    {
+        var options = new EtcdOptions
+        {
+            EndPoints = "http://127.0.0.1:2379",
+            SslOptions = new SslOptions { UseSsl = true }
+        };
+
+        Assert.Throws<OptionsValidationException>(() => new EtcdClientFactory().CreateClient(options));
     }
 
     private static string GetCaCertificatePath()

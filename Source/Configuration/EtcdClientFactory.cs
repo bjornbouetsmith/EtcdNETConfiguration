@@ -28,6 +28,8 @@ public class EtcdClientFactory : IEtcdClientFactory
     /// <inheritdoc />
     public IEtcdClient CreateClient(EtcdOptions options) 
     {
+        EtcdTlsOptionsValidator.ValidateAndThrow(options);
+
         return new EtcdClient(options.EndPoints, configureChannelOptions: channelOptions =>
             ConfigureChannel(options, channelOptions));
     }
@@ -39,6 +41,10 @@ public class EtcdClientFactory : IEtcdClientFactory
     /// <param name="channelOptions">The channel options to configure.</param>
     internal static void ConfigureChannel(EtcdOptions options, GrpcChannelOptions channelOptions)
     {
+        // Keep validation here as well: the DI path and internal callers must not be
+        // able to create a channel that bypasses the public factory's validation.
+        EtcdTlsOptionsValidator.ValidateAndThrow(options);
+
         var sslOptions = options.SslOptions;
 
         if (sslOptions is null || !sslOptions.UseSsl)

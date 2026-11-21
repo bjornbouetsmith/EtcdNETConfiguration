@@ -125,6 +125,8 @@ public static class EtcdConfigurationProviderExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddSingleton<IValidateOptions<EtcdOptions>, EtcdTlsOptionsValidator>();
+
         services.AddSingleton(serviceProvider =>
             serviceProvider.GetRequiredService<IOptions<EtcdOptions>>().Value);
     }

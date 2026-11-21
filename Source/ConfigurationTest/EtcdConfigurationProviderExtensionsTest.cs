@@ -55,11 +55,11 @@ public class EtcdConfigurationProviderExtensionsTest
         EtcdOptions? configuredOptions = null;
         builder.AddEtcdConfiguration(options =>
         {
-            options.EndPoints = "http://localhost:2379";
+            options.EndPoints = "https://localhost:2379";
             options.SslOptions = new SslOptions
             {
                 UseSsl = true,
-                ServerCertificateAuthorityPath = "ca.crt"
+                ServerCertificateAuthorityPath = TestCertificates.CaCertificatePath
             };
             configuredOptions = options;
         });
@@ -131,7 +131,7 @@ public class EtcdConfigurationProviderExtensionsTest
     {
         var etcdOptions = new EtcdOptions
         {
-            EndPoints = "https://etcd:2379",
+            EndPoints = useSsl ? "https://etcd:2379" : "http://etcd:2379",
             SslOptions = new SslOptions { UseSsl = useSsl }
         };
         var clientOptions = new EtcdClientOptions();
@@ -170,7 +170,7 @@ public class EtcdConfigurationProviderExtensionsTest
             SslOptions = new SslOptions
             {
                 UseSsl = true,
-                ServerCertificateAuthorityPath = "ca.crt"
+                ServerCertificateAuthorityPath = TestCertificates.CaCertificatePath
             }
         };
         var clientOptions = new EtcdClientOptions();

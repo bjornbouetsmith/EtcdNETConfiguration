@@ -48,6 +48,10 @@ public class EtcdConfigurationSource : IConfigurationSource
         // etcd cannot be reached or TLS/authentication fails. Previously the
         // exception was swallowed, which could silently start the application
         // without its configuration or hide a downgraded plaintext connection.
+        // Validate before creating the client so a custom factory cannot bypass
+        // the TLS checks either.
+        EtcdTlsOptionsValidator.ValidateAndThrow(_options);
+
         var client = _clientFactory.CreateClient(_options);
 
         try
