@@ -32,10 +32,10 @@ public record EtcdOptions
 
     /// <summary>
     /// Gets or sets a comma-separated list of etcd endpoints (e.g., "https://127.0.0.1:2379,https://127.0.0.1:2380").
-    /// Defaults to "https://127.0.0.1:2379".
+    /// Defaults to "http://127.0.0.1:2379", matching the default of <see cref="SslOptions.UseSsl"/>.
     /// </summary>
     [Required(ErrorMessage = "Endpoints must be set to a non empty string")]
-    public string? EndPoints { get; set; } = "https://127.0.0.1:2379";
+    public string? EndPoints { get; set; } = "http://127.0.0.1:2379";
 
     /// <summary>
     /// Gets or sets the root key prefix from which etcd configuration will be loaded.

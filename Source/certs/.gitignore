@@ -5,7 +5,20 @@ ca.key
 server.crt
 server.key
 
+# Client certificates generated for the mTLS integration tests.
+client.crt
+client.key
+untrusted-client.crt
+untrusted-client.key
+no-eku-client.crt
+no-eku-client.key
+expired-client.crt
+expired-client.key
+other-ca.crt
+other-ca.key
+
 # Intermediate files created by generate-certs.sh.
 *.csr
 *.srl
+*.ext
 server.ext
