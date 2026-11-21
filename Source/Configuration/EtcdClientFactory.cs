@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Security;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace ROOT.Etcd.Configuration;
@@ -90,15 +91,25 @@ public class EtcdClientFactory : IEtcdClientFactory
                 }
             };
 
-            X509Certificate2? caCertificate = null;
             if (!string.IsNullOrWhiteSpace(sslOptions.ServerCertificateAuthorityPath))
             {
-                caCertificate = EtcdTlsCertificateLoader.LoadCertificateAuthority(
+                var caCertificate = EtcdTlsCertificateLoader.LoadCertificateAuthority(
                     sslOptions.ServerCertificateAuthorityPath);
                 ownedCertificates.Add(caCertificate);
 
-                socketsHandler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, sslPolicyErrors) =>
-                    ValidateServerCertificate(certificate, caCertificate, sslPolicyErrors);
+                // CustomRootTrust makes the configured CA exclusive instead of additive,
+                // and serverAuth prevents a certificate issued for another purpose from
+                // being accepted for the etcd server.
+                var chainPolicy = new X509ChainPolicy
+                {
+                    TrustMode = X509ChainTrustMode.CustomRootTrust,
+                    RevocationMode = sslOptions.RevocationMode,
+                    DisableCertificateDownloads = true
+                };
+                chainPolicy.CustomTrustStore.Add(caCertificate);
+                chainPolicy.ApplicationPolicy.Add(new Oid(ServerAuthOid));
+
+                socketsHandler.SslOptions.CertificateChainPolicy = chainPolicy;
             }
 
             if (sslOptions.ClientCertificate is not null)
@@ -136,34 +147,9 @@ public class EtcdClientFactory : IEtcdClientFactory
     }
 
     /// <summary>
-    /// Validates the etcd server certificate against a custom root CA.
+    /// Server authentication extended key usage: 1.3.6.1.5.5.7.3.1.
     /// </summary>
-    private static bool ValidateServerCertificate(
-        X509Certificate? certificate,
-        X509Certificate2 caCertificate,
-        SslPolicyErrors sslPolicyErrors)
-    {
-        if (sslPolicyErrors == SslPolicyErrors.None)
-        {
-            return true;
-        }
-
-        if (certificate is null ||
-            (sslPolicyErrors & SslPolicyErrors.RemoteCertificateNotAvailable) != 0 ||
-            (sslPolicyErrors & SslPolicyErrors.RemoteCertificateNameMismatch) != 0)
-        {
-            return false;
-        }
-
-        using var serverCertificate = X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
-        using var chain = new X509Chain();
-        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-        chain.ChainPolicy.CustomTrustStore.Add(caCertificate);
-        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-        chain.ChainPolicy.DisableCertificateDownloads = true;
-
-        return chain.Build(serverCertificate);
-    }
+    private const string ServerAuthOid = "1.3.6.1.5.5.7.3.1";
 
     /// <summary>
     /// Disposes certificates loaded by the library when the handler is disposed.

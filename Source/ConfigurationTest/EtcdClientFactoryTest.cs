@@ -187,7 +187,43 @@ public class EtcdClientFactoryTest
 
         var handler = GetSocketsHandler(channelOptions);
         Assert.Single(handler.SslOptions.ClientCertificates!.Cast<X509Certificate2>());
-        Assert.NotNull(handler.SslOptions.RemoteCertificateValidationCallback);
+        Assert.NotNull(handler.SslOptions.CertificateChainPolicy);
+    }
+
+    [Fact]
+    public void ConfigureChannel_WhenCustomCaIsProvided_UsesExclusiveCustomRootTrustAndServerAuth()
+    {
+        using var caCertificate = X509CertificateLoader.LoadCertificateFromFile(GetCaCertificatePath());
+        var channelOptions = new GrpcChannelOptions();
+
+        EtcdClientFactory.ConfigureChannel(
+            new EtcdOptions
+            {
+                EndPoints = HttpsEndpoint,
+                SslOptions = new SslOptions
+                {
+                    UseSsl = true,
+                    ServerCertificateAuthorityPath = GetCaCertificatePath(),
+                    RevocationMode = X509RevocationMode.Offline
+                }
+            },
+            channelOptions);
+
+        var handler = GetSocketsHandler(channelOptions);
+
+        Assert.Null(handler.SslOptions.RemoteCertificateValidationCallback);
+
+        var policy = Assert.IsType<X509ChainPolicy>(handler.SslOptions.CertificateChainPolicy);
+        Assert.Equal(X509ChainTrustMode.CustomRootTrust, policy.TrustMode);
+        Assert.Equal(X509RevocationMode.Offline, policy.RevocationMode);
+        Assert.True(policy.DisableCertificateDownloads);
+
+        var trustedCertificate = Assert.Single(policy.CustomTrustStore.Cast<X509Certificate2>());
+        Assert.Equal(caCertificate.Thumbprint, trustedCertificate.Thumbprint);
+
+        Assert.Contains(
+            policy.ApplicationPolicy.Cast<Oid>(),
+            oid => oid.Value == "1.3.6.1.5.5.7.3.1");
     }
 
     [Fact]
