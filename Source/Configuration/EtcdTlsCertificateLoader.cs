@@ -57,8 +57,12 @@ internal static class EtcdTlsCertificateLoader
     internal static X509Certificate2 LoadClientCertificate(SslOptions sslOptions)
     {
         var certificates = LoadClientCertificates(sslOptions);
-        var certificate = FindCertificateWithPrivateKey(certificates)
-            ?? throw new InvalidOperationException("The client certificate does not contain a private key.");
+        var certificate = FindCertificateWithPrivateKey(certificates);
+        if (certificate is null)
+        {
+            DisposeCertificates(certificates);
+            throw new InvalidOperationException("The client certificate does not contain a private key.");
+        }
 
         foreach (var otherCertificate in certificates)
         {
@@ -118,6 +122,11 @@ internal static class EtcdTlsCertificateLoader
             pfx = certificate.Export(X509ContentType.Pkcs12);
             certificate.Dispose();
             return X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
+        }
+        catch
+        {
+            certificate.Dispose();
+            throw;
         }
         finally
         {
