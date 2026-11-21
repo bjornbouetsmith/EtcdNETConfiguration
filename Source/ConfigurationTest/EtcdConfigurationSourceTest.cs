@@ -144,7 +144,7 @@ public class EtcdConfigurationSourceTest
     }
 
     [Fact]
-    public void Build_WhenInjectedClientThrows_ReturnsEmptyConfiguration()
+    public void Build_WhenInjectedClientThrows_PropagatesAndKeepsExistingConfiguration()
     {
         var client = new Mock<IEtcdClient>();
         client
@@ -158,16 +158,16 @@ public class EtcdConfigurationSourceTest
         });
         var source = CreateSource(sharedConfiguration, factory.Object);
 
-        var provider = source.Build(new ConfigurationBuilder());
-        provider.Load();
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => source.Build(new ConfigurationBuilder()));
 
-        Assert.Empty(sharedConfiguration.Configuration);
-        Assert.False(provider.TryGet("/configuration:stale", out _));
+        Assert.Contains("etcd is unavailable", exception.Message);
+        Assert.Equal("stale-value", sharedConfiguration.Configuration["/configuration:stale"]);
         client.Verify(client => client.Dispose(), Times.Once);
     }
 
     [Fact]
-    public void Build_WhenClientFactoryThrows_ReturnsEmptyConfiguration()
+    public void Build_WhenClientFactoryThrows_Propagates()
     {
         var factory = new Mock<IEtcdClientFactory>();
         factory
@@ -176,11 +176,11 @@ public class EtcdConfigurationSourceTest
         var sharedConfiguration = new EtcdConfiguration();
         var source = new EtcdConfigurationSource(new EtcdOptions(), sharedConfiguration, factory.Object);
 
-        var provider = source.Build(new ConfigurationBuilder());
-        provider.Load();
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => source.Build(new ConfigurationBuilder()));
 
+        Assert.Contains("client could not be created", exception.Message);
         Assert.Empty(sharedConfiguration.Configuration);
-        Assert.False(provider.TryGet("/configuration:one", out _));
     }
     
     private static EtcdConfigurationSource CreateSource(IEtcdClientFactory factory) =>
