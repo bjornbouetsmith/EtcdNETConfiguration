@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using dotnet_etcd.DependencyInjection;
+using dotnet_etcd.interfaces;
+using Etcdserverpb;
+using Grpc.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics;
@@ -197,7 +201,9 @@ public class EtcdConfigurationProviderExtensionsTest
     {
         var builder = new CapturingHostApplicationBuilder();
 
-        var result = builder.AddEtcdConfiguration(_ => { });
+        var result = builder.AddEtcdConfiguration(
+            _ => { },
+            etcdClientFactory: CreateEmptyClientFactory());
 
         Assert.Same(builder, result);
     }
@@ -209,12 +215,14 @@ public class EtcdConfigurationProviderExtensionsTest
         var callCount = 0;
         EtcdOptions? configuredOptions = null;
 
-        builder.AddEtcdConfiguration(options =>
-        {
-            callCount++;
-            options.EndPoints = "http://localhost:2379";
-            configuredOptions = options;
-        });
+        builder.AddEtcdConfiguration(
+            options =>
+            {
+                callCount++;
+                options.EndPoints = "http://localhost:2379";
+                configuredOptions = options;
+            },
+            etcdClientFactory: CreateEmptyClientFactory());
 
         Assert.Equal(1, callCount);
         Assert.NotNull(configuredOptions);
@@ -226,16 +234,18 @@ public class EtcdConfigurationProviderExtensionsTest
     {
         var builder = new CapturingHostApplicationBuilder();
         EtcdOptions? configuredOptions = null;
-        builder.AddEtcdConfiguration(options =>
-        {
-            options.EndPoints = "http://localhost:2379";
-            options.SslOptions = new SslOptions
+        builder.AddEtcdConfiguration(
+            options =>
             {
-                UseSsl = true,
-                ServerCertificateAuthorityPath = "ca.crt"
-            };
-            configuredOptions = options;
-        });
+                options.EndPoints = "https://localhost:2379";
+                options.SslOptions = new SslOptions
+                {
+                    UseSsl = true,
+                    ServerCertificateAuthorityPath = TestCertificates.CaCertificatePath
+                };
+                configuredOptions = options;
+            },
+            etcdClientFactory: CreateEmptyClientFactory());
 
         var services = builder.Services;
 
@@ -281,7 +291,10 @@ public class EtcdConfigurationProviderExtensionsTest
     {
         var builder = new CapturingHostApplicationBuilder();
         var timeProvider = new TestTimeProvider(new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero));
-        builder.AddEtcdConfiguration(_ => { }, timeProvider: timeProvider);
+        builder.AddEtcdConfiguration(
+            _ => { },
+            etcdClientFactory: CreateEmptyClientFactory(),
+            timeProvider: timeProvider);
 
         var timeProviderDescriptor = Assert.Single(
             builder.Services,
@@ -293,7 +306,9 @@ public class EtcdConfigurationProviderExtensionsTest
     public void ApplicationBuilder_AddEtcdConfiguration_AddsTheHostConfigurationSources()
     {
         var builder = new CapturingHostApplicationBuilder();
-        builder.AddEtcdConfiguration(_ => { });
+        builder.AddEtcdConfiguration(
+            _ => { },
+            etcdClientFactory: CreateEmptyClientFactory());
 
         // There must be only one etcd-backed provider. A separate one-time provider
         // would keep deleted keys alive as a fallback.
@@ -308,7 +323,9 @@ public class EtcdConfigurationProviderExtensionsTest
     {
         var builder = new CapturingHostApplicationBuilder();
 
-        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.FromSeconds(-1));
+        builder.AddEtcdConfiguration(
+            options => options.RefreshInterval = TimeSpan.FromSeconds(-1),
+            etcdClientFactory: CreateEmptyClientFactory());
 
         using var provider = builder.Services.BuildServiceProvider();
 
@@ -321,13 +338,34 @@ public class EtcdConfigurationProviderExtensionsTest
     public async Task ApplicationBuilder_AddEtcdConfiguration_ValidatesOptionsOnStart()
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.AddEtcdConfiguration(options => options.RefreshInterval = TimeSpan.FromSeconds(-1));
+        builder.AddEtcdConfiguration(
+            options => options.RefreshInterval = TimeSpan.FromSeconds(-1),
+            etcdClientFactory: CreateEmptyClientFactory());
 
         using var host = builder.Build();
 
         var exception = await Assert.ThrowsAsync<OptionsValidationException>(
             () => host.StartAsync(TestContext.Current.CancellationToken));
         Assert.Contains("RefreshInterval", exception.Message);
+    }
+
+    private static IEtcdClientFactory CreateEmptyClientFactory()
+    {
+        var client = new Mock<IEtcdClient>();
+        client
+            .Setup(c => c.GetRange(
+                It.IsAny<string>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(new RangeResponse());
+
+        var factory = new Mock<IEtcdClientFactory>();
+        factory
+            .Setup(f => f.CreateClient(It.IsAny<EtcdOptions>()))
+            .Returns(client.Object);
+
+        return factory.Object;
     }
 
     private sealed class CapturingHostApplicationBuilder : IHostApplicationBuilder

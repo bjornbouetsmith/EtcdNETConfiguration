@@ -1,8 +1,5 @@
 ﻿using dotnet_etcd.interfaces;
 using Microsoft.Extensions.Configuration;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ROOT.Etcd.Configuration;
@@ -47,25 +44,21 @@ public class EtcdConfigurationSource : IConfigurationSource
 
     private EtcdConfiguration LoadInitialConfiguration()
     {
-        IEtcdClient? client = null;
+        // Fail closed: the host must not continue with an empty configuration when
+        // etcd cannot be reached or TLS/authentication fails. Previously the
+        // exception was swallowed, which could silently start the application
+        // without its configuration or hide a downgraded plaintext connection.
+        var client = _clientFactory.CreateClient(_options);
+
         try
         {
-            client = _clientFactory.CreateClient(_options);
-
             EtcdConfigurationLoader loader = new EtcdConfigurationLoader(client, _options, NullLogger<EtcdConfigurationLoader>.Instance);
             var data = loader.LoadConfiguration();
-            var configuration = new EtcdConfiguration(data.Configuration);
-
-            return configuration;
-        }
-        catch (Exception e)
-        {
-            Trace.WriteLine($"Failed to load initial configuration from etcd because of exception:{e}");
-            return new EtcdConfiguration(new Dictionary<string, string?>());
+            return new EtcdConfiguration(data.Configuration);
         }
         finally
         {
-            client?.Dispose();
+            client.Dispose();
         }
     }
 }
