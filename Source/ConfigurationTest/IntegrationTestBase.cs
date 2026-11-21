@@ -17,6 +17,11 @@ public abstract class IntegrationTestBase
     private const string DefaultTlsEtcdServer = "https://127.0.0.1:12379";
     private const string DefaultMtlsEtcdServer = "https://127.0.0.1:12389";
 
+    private static readonly SemaphoreSlim DockerComposeGate = new(1, 1);
+    private static bool _etcdContainerStarted;
+    private static bool _tlsContainerStarted;
+    private static bool _mtlsContainerStarted;
+
     private readonly ITestOutputHelper _testOutputHelper;
 
     protected string EtcdServer { get; } =
@@ -71,7 +76,21 @@ public abstract class IntegrationTestBase
             return true;
         }
 
-        return await RunDockerComposeAsync("up -d", cancellationToken);
+        await DockerComposeGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_etcdContainerStarted)
+            {
+                return true;
+            }
+
+            _etcdContainerStarted = await RunDockerComposeAsync("up -d", cancellationToken);
+            return _etcdContainerStarted;
+        }
+        finally
+        {
+            DockerComposeGate.Release();
+        }
     }
 
     /// <summary>
@@ -89,14 +108,29 @@ public abstract class IntegrationTestBase
         }
 
         // etcd reads the certificate files only at startup, so recreate the container
-        // when fresh certificates were generated during this test run.
-        var upArguments = TestCertificates.WasRegenerated
-            ? "-f docker-compose.tls.yml up -d --force-recreate"
-            : "-f docker-compose.tls.yml up -d";
-
-        if (!await RunDockerComposeAsync(upArguments, cancellationToken))
+        // when fresh certificates were generated during this test run. Serialize the
+        // operation and only do it once per process: parallel test classes must not
+        // run concurrent compose recreate operations against the same stack.
+        await DockerComposeGate.WaitAsync(cancellationToken);
+        try
         {
-            return false;
+            if (!_tlsContainerStarted)
+            {
+                var upArguments = TestCertificates.WasRegenerated
+                    ? "-f docker-compose.tls.yml up -d --force-recreate"
+                    : "-f docker-compose.tls.yml up -d";
+
+                if (!await RunDockerComposeAsync(upArguments, cancellationToken))
+                {
+                    return false;
+                }
+
+                _tlsContainerStarted = true;
+            }
+        }
+        finally
+        {
+            DockerComposeGate.Release();
         }
 
         return await WaitForTlsEtcdAsync(cancellationToken);
@@ -116,13 +150,28 @@ public abstract class IntegrationTestBase
             return await WaitForMtlsEtcdAsync(cancellationToken);
         }
 
-        var upArguments = TestCertificates.WasRegenerated
-            ? "-f docker-compose.mtls.yml up -d --force-recreate"
-            : "-f docker-compose.mtls.yml up -d";
-
-        if (!await RunDockerComposeAsync(upArguments, cancellationToken))
+        // See StartTlsEtcdContainer: serialize and only recreate the stack once per
+        // process so parallel test classes cannot race on Compose's temporary names.
+        await DockerComposeGate.WaitAsync(cancellationToken);
+        try
         {
-            return false;
+            if (!_mtlsContainerStarted)
+            {
+                var upArguments = TestCertificates.WasRegenerated
+                    ? "-f docker-compose.mtls.yml up -d --force-recreate"
+                    : "-f docker-compose.mtls.yml up -d";
+
+                if (!await RunDockerComposeAsync(upArguments, cancellationToken))
+                {
+                    return false;
+                }
+
+                _mtlsContainerStarted = true;
+            }
+        }
+        finally
+        {
+            DockerComposeGate.Release();
         }
 
         return await WaitForMtlsEtcdAsync(cancellationToken);
