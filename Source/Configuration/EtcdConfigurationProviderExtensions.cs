@@ -51,7 +51,8 @@ public static class EtcdConfigurationProviderExtensions
                     etcdConfiguration.Configuration));
             services.AddHostedService<EtcdPoller>();
 
-            services.AddEtcdClient(options => ConfigureEtcdClient(etcdOptions, options));
+            services.AddEtcdClient((serviceProvider, clientOptions) =>
+                ConfigureEtcdClient(serviceProvider.GetRequiredService<EtcdOptions>(), clientOptions));
         });
 
         hostBuilder.ConfigureHostConfiguration(config =>
@@ -102,7 +103,8 @@ public static class EtcdConfigurationProviderExtensions
 
         hostBuilder.Services.AddHostedService<EtcdPoller>();
 
-        hostBuilder.Services.AddEtcdClient(options => ConfigureEtcdClient(etcdOptions, options));
+        hostBuilder.Services.AddEtcdClient((serviceProvider, clientOptions) =>
+            ConfigureEtcdClient(serviceProvider.GetRequiredService<EtcdOptions>(), clientOptions));
 
         // This source loads the initial values synchronously and seeds the shared
         // EtcdConfiguration used by both IConfiguration and the background poller.

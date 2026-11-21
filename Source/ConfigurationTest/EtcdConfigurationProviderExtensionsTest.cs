@@ -284,6 +284,39 @@ public class EtcdConfigurationProviderExtensionsTest
             services,
             descriptor => descriptor.ServiceType == typeof(IHostedService) &&
                           descriptor.ImplementationType == typeof(EtcdPoller));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IValidateOptions<EtcdOptions>));
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_ConfiguresClientFromValidatedOptionsSnapshot()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+        EtcdOptions? configuredOptions = null;
+
+        builder.AddEtcdConfiguration(
+            options =>
+            {
+                options.EndPoints = "https://localhost:2379";
+                options.SslOptions = new SslOptions
+                {
+                    UseSsl = true,
+                    ServerCertificateAuthorityPath = TestCertificates.CaCertificatePath
+                };
+                configuredOptions = options;
+            },
+            etcdClientFactory: CreateEmptyClientFactory());
+
+        using var provider = builder.Services.BuildServiceProvider();
+        var validatedOptions = provider.GetRequiredService<EtcdOptions>();
+        Assert.True(validatedOptions.SslOptions!.UseSsl);
+
+        // The DI client must use the validated snapshot, not the caller's mutable object.
+        configuredOptions!.EndPoints = "http://localhost:2379";
+
+        using var client = provider.GetRequiredService<IEtcdClient>();
+        Assert.NotNull(client);
     }
 
     [Fact]
