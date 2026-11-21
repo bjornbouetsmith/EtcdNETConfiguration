@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
+using System.Linq;
 
 namespace ROOT.Etcd.Configuration;
 
@@ -38,6 +39,7 @@ public static class EtcdConfigurationProviderExtensions
 
         hostBuilder.ConfigureServices((_, services) =>
         {
+            EnsureNoConflictingEtcdClientRegistration(services, etcdOptions);
             AddEtcdOptions(services, etcdOptions);
             services.AddSingleton(timeProvider ?? TimeProvider.System);
             services.AddSingleton<IEtcdConfiguration>(etcdConfiguration);
@@ -88,6 +90,7 @@ public static class EtcdConfigurationProviderExtensions
 
         var clientFactory = etcdClientFactory ?? new EtcdClientFactory();
 
+        EnsureNoConflictingEtcdClientRegistration(hostBuilder.Services, etcdOptions);
         AddEtcdOptions(hostBuilder.Services, etcdOptions);
         hostBuilder.Services.AddSingleton(timeProvider ?? TimeProvider.System);
         hostBuilder.Services.AddSingleton<IEtcdConfiguration>(etcdConfiguration);
@@ -111,6 +114,30 @@ public static class EtcdConfigurationProviderExtensions
         hostBuilder.Configuration.Add(new EtcdConfigurationSource(etcdOptions, etcdConfiguration, clientFactory));
 
         return hostBuilder;
+    }
+
+    /// <summary>
+    /// dotnet-etcd registers <see cref="IEtcdClient"/> with TryAddSingleton, so a pre-existing
+    /// registration would silently win and the TLS-configured client would never be used.
+    /// Fail instead of starting with a client that bypasses the configured TLS settings.
+    /// </summary>
+    private static void EnsureNoConflictingEtcdClientRegistration(
+        IServiceCollection services,
+        EtcdOptions etcdOptions)
+    {
+        if (etcdOptions.SslOptions?.UseSsl != true)
+        {
+            return;
+        }
+
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(IEtcdClient)))
+        {
+            throw new InvalidOperationException(
+                "An IEtcdClient is already registered. The TLS-configured etcd client from " +
+                "AddEtcdConfiguration would be ignored because dotnet-etcd registers IEtcdClient " +
+                "with TryAddSingleton. Register AddEtcdConfiguration before any other IEtcdClient " +
+                "registration, or remove the conflicting registration.");
+        }
     }
 
     /// <summary>

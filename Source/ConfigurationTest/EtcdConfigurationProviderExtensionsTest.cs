@@ -320,6 +320,68 @@ public class EtcdConfigurationProviderExtensionsTest
     }
 
     [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_WhenTlsIsConfiguredAndClientIsRegistered_Throws()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+        builder.Services.AddSingleton(Mock.Of<IEtcdClient>());
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            builder.AddEtcdConfiguration(
+                options =>
+                {
+                    options.EndPoints = "https://localhost:2379";
+                    options.SslOptions = new SslOptions
+                    {
+                        UseSsl = true,
+                        ServerCertificateAuthorityPath = TestCertificates.CaCertificatePath
+                    };
+                },
+                etcdClientFactory: CreateEmptyClientFactory()));
+
+        Assert.Contains("already registered", exception.Message);
+    }
+
+    [Fact]
+    public void ApplicationBuilder_AddEtcdConfiguration_WhenClientIsRegisteredWithoutTls_DoesNotThrow()
+    {
+        var builder = new CapturingHostApplicationBuilder();
+        var existingClient = Mock.Of<IEtcdClient>();
+        builder.Services.AddSingleton(existingClient);
+
+        builder.AddEtcdConfiguration(
+            _ => { },
+            etcdClientFactory: CreateEmptyClientFactory());
+
+        Assert.Contains(
+            builder.Services,
+            descriptor => descriptor.ServiceType == typeof(IEtcdClient) &&
+                          ReferenceEquals(descriptor.ImplementationInstance, existingClient));
+    }
+
+    [Fact]
+    public void AddEtcdConfiguration_WhenTlsIsConfiguredAndClientIsRegistered_Throws()
+    {
+        var builder = new CapturingHostBuilder();
+        builder.AddEtcdConfiguration(options =>
+        {
+            options.EndPoints = "https://localhost:2379";
+            options.SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ServerCertificateAuthorityPath = TestCertificates.CaCertificatePath
+            };
+        });
+
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEtcdClient>());
+
+        Assert.Throws<InvalidOperationException>(() =>
+            builder.ConfigureServicesAction!(
+                new HostBuilderContext(new Dictionary<object, object>()),
+                services));
+    }
+
+    [Fact]
     public void ApplicationBuilder_AddEtcdConfiguration_RegistersTheProvidedTimeProvider()
     {
         var builder = new CapturingHostApplicationBuilder();
