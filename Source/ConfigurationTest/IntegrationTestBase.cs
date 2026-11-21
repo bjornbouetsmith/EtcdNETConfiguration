@@ -40,6 +40,18 @@ public abstract class IntegrationTestBase
         Environment.GetEnvironmentVariable("ETCD_MTLS_CLIENT_KEY")
         ?? TestCertificates.ClientCertificateKeyPath;
 
+    protected string UntrustedClientCertificatePath => TestCertificates.UntrustedClientCertificatePath;
+
+    protected string UntrustedClientKeyPath => TestCertificates.UntrustedClientKeyPath;
+
+    protected string NoClientAuthEkuCertificatePath => TestCertificates.NoClientAuthEkuCertificatePath;
+
+    protected string NoClientAuthEkuKeyPath => TestCertificates.NoClientAuthEkuKeyPath;
+
+    protected string ExpiredClientCertificatePath => TestCertificates.ExpiredClientCertificatePath;
+
+    protected string ExpiredClientKeyPath => TestCertificates.ExpiredClientKeyPath;
+
     protected bool IsExternalMtlsEndpoint =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ETCD_MTLS_ENDPOINT"));
 

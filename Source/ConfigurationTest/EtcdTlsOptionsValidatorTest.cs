@@ -330,6 +330,52 @@ public class EtcdTlsOptionsValidatorTest
     }
 
     [Fact]
+    public void InMemoryClientCertificateWithoutClientAuthEku_Fails()
+    {
+        using var certificate = TestCertificateFactory.CreateSelfSignedClientCertificate(
+            includeClientAuthEku: false);
+
+        var options = new EtcdOptions
+        {
+            EndPoints = HttpsEndpoint,
+            SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ClientCertificate = certificate
+            }
+        };
+
+        Assert.Contains(
+            EtcdTlsOptionsValidator.Validate(options),
+            failure => failure.Contains("clientAuth", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PemClientCertificateWithoutClientAuthEku_Fails()
+    {
+        using var files = new TestCertificateFiles();
+        using var certificate = TestCertificateFactory.CreateSelfSignedClientCertificate(
+            includeClientAuthEku: false);
+        var certificatePath = TestCertificateFactory.WriteCertificatePem(files, "client.crt", certificate);
+        var keyPath = TestCertificateFactory.WritePrivateKeyPem(files, "client.key", certificate);
+
+        var options = new EtcdOptions
+        {
+            EndPoints = HttpsEndpoint,
+            SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ClientCertificatePath = certificatePath,
+                ClientCertificateKeyPath = keyPath
+            }
+        };
+
+        Assert.Contains(
+            EtcdTlsOptionsValidator.Validate(options),
+            failure => failure.Contains("clientAuth", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ExpiredInMemoryClientCertificate_Fails()
     {
         var now = DateTimeOffset.UtcNow;

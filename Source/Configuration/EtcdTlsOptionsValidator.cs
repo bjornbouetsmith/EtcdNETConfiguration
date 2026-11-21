@@ -15,6 +15,9 @@ namespace ROOT.Etcd.Configuration;
 /// </summary>
 internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
 {
+    private const string ClientAuthOid = "1.3.6.1.5.5.7.3.2";
+    private const string AnyExtendedKeyUsageOid = "2.5.29.37.0";
+
     /// <inheritdoc />
     public ValidateOptionsResult Validate(string? name, EtcdOptions options)
     {
@@ -203,6 +206,11 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
             failures.Add("The configured in-memory etcd client certificate does not contain a private key.");
         }
 
+        if (!HasClientAuthExtendedKeyUsage(certificate))
+        {
+            failures.Add("The configured in-memory etcd client certificate does not include the clientAuth extended key usage.");
+        }
+
         ValidateCertificateValidity(certificate, "The configured in-memory etcd client certificate", failures);
     }
 
@@ -233,6 +241,11 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
                 return;
             }
 
+            if (!HasClientAuthExtendedKeyUsage(certificate))
+            {
+                failures.Add($"The etcd client certificate loaded from '{certificatePath}' does not include the clientAuth extended key usage.");
+            }
+
             ValidateCertificateValidity(certificate, "The etcd client certificate", failures);
         }
         catch (Exception exception) when (exception is CryptographicException or IOException or UnauthorizedAccessException or ArgumentException)
@@ -246,6 +259,27 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
                 EtcdTlsCertificateLoader.DisposeCertificates(certificates);
             }
         }
+    }
+
+    private static bool HasClientAuthExtendedKeyUsage(X509Certificate2 certificate)
+    {
+        foreach (var extension in certificate.Extensions)
+        {
+            if (extension is not X509EnhancedKeyUsageExtension enhancedKeyUsage)
+            {
+                continue;
+            }
+
+            foreach (var oid in enhancedKeyUsage.EnhancedKeyUsages)
+            {
+                if (oid.Value == ClientAuthOid || oid.Value == AnyExtendedKeyUsageOid)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void ValidateCertificateValidity(
