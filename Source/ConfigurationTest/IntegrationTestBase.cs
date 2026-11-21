@@ -24,40 +24,40 @@ public abstract class IntegrationTestBase
 
     private readonly ITestOutputHelper _testOutputHelper;
 
-    protected string EtcdServer { get; } =
+    protected static string EtcdServer { get; } =
         Environment.GetEnvironmentVariable("ETCD_ENDPOINT") ?? DefaultEtcdServer;
 
-    protected string TlsEtcdServer { get; } =
+    protected static string TlsEtcdServer { get; } =
         Environment.GetEnvironmentVariable("ETCD_TLS_ENDPOINT") ?? DefaultTlsEtcdServer;
 
-    protected string CaCertificatePath { get; } =
+    protected static string CaCertificatePath { get; } =
         Environment.GetEnvironmentVariable("ETCD_TLS_CA_CERT")
         ?? TestCertificates.CaCertificatePath;
 
-    protected string MtlsEtcdServer { get; } =
+    protected static string MtlsEtcdServer { get; } =
         Environment.GetEnvironmentVariable("ETCD_MTLS_ENDPOINT") ?? DefaultMtlsEtcdServer;
 
-    protected string ClientCertificatePath { get; } =
+    protected static string ClientCertificatePath { get; } =
         Environment.GetEnvironmentVariable("ETCD_MTLS_CLIENT_CERT")
         ?? TestCertificates.ClientCertificatePath;
 
-    protected string ClientCertificateKeyPath { get; } =
+    protected static string ClientCertificateKeyPath { get; } =
         Environment.GetEnvironmentVariable("ETCD_MTLS_CLIENT_KEY")
         ?? TestCertificates.ClientCertificateKeyPath;
 
-    protected string UntrustedClientCertificatePath => TestCertificates.UntrustedClientCertificatePath;
+    protected static string UntrustedClientCertificatePath => TestCertificates.UntrustedClientCertificatePath;
 
-    protected string UntrustedClientKeyPath => TestCertificates.UntrustedClientKeyPath;
+    protected static string UntrustedClientKeyPath => TestCertificates.UntrustedClientKeyPath;
 
-    protected string NoClientAuthEkuCertificatePath => TestCertificates.NoClientAuthEkuCertificatePath;
+    protected static string NoClientAuthEkuCertificatePath => TestCertificates.NoClientAuthEkuCertificatePath;
 
-    protected string NoClientAuthEkuKeyPath => TestCertificates.NoClientAuthEkuKeyPath;
+    protected static string NoClientAuthEkuKeyPath => TestCertificates.NoClientAuthEkuKeyPath;
 
-    protected string ExpiredClientCertificatePath => TestCertificates.ExpiredClientCertificatePath;
+    protected static string ExpiredClientCertificatePath => TestCertificates.ExpiredClientCertificatePath;
 
-    protected string ExpiredClientKeyPath => TestCertificates.ExpiredClientKeyPath;
+    protected static string ExpiredClientKeyPath => TestCertificates.ExpiredClientKeyPath;
 
-    protected bool IsExternalMtlsEndpoint =>
+    protected static bool IsExternalMtlsEndpoint =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ETCD_MTLS_ENDPOINT"));
 
     protected IntegrationTestBase(ITestOutputHelper testOutputHelper)

@@ -120,16 +120,12 @@ internal static class EtcdTlsCertificateLoader
         try
         {
             pfx = certificate.Export(X509ContentType.Pkcs12);
-            certificate.Dispose();
             return X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
-        }
-        catch
-        {
-            certificate.Dispose();
-            throw;
         }
         finally
         {
+            certificate.Dispose();
+
             if (pfx is not null)
             {
                 CryptographicOperations.ZeroMemory(pfx);

@@ -70,7 +70,7 @@ public class EtcdClientFactory : IEtcdClientFactory
     /// Creates an HTTP handler that carries the custom CA trust and/or client certificate.
     /// Certificates loaded from disk are owned by the handler and disposed with it.
     /// </summary>
-    private static HttpMessageHandler CreateTlsHttpHandler(SslOptions sslOptions)
+    private static CertificateOwningHandler CreateTlsHttpHandler(SslOptions sslOptions)
     {
         var ownedCertificates = new List<X509Certificate2>();
         SocketsHttpHandler? socketsHandler = null;

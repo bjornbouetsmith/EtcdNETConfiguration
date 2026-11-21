@@ -365,7 +365,9 @@ public class EtcdClientFactoryTest
 
     private static SocketsHttpHandler GetSocketsHandler(GrpcChannelOptions channelOptions)
     {
-        var delegatingHandler = Assert.IsAssignableFrom<DelegatingHandler>(channelOptions.HttpHandler);
+        var delegatingHandler = Assert.IsType<DelegatingHandler>(
+            channelOptions.HttpHandler,
+            exactMatch: false);
         return Assert.IsType<SocketsHttpHandler>(delegatingHandler.InnerHandler);
     }
 
