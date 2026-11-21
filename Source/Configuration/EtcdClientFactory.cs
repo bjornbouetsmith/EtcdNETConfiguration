@@ -57,11 +57,9 @@ public class EtcdClientFactory : IEtcdClientFactory
 
         channelOptions.Credentials = ChannelCredentials.SecureSsl;
 
-        if (!EtcdTlsOptionsValidator.HasCustomTlsMaterial(sslOptions))
-        {
-            return;
-        }
-
+        // Always install the handler for TLS so the explicit connect timeout,
+        // proxy policy, and ALPN settings apply even when only the OS trust
+        // store is used.
         channelOptions.HttpHandler = CreateTlsHttpHandler(sslOptions);
         channelOptions.DisposeHttpClient = true;
     }
@@ -83,6 +81,7 @@ public class EtcdClientFactory : IEtcdClientFactory
                 KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
                 KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
                 ConnectTimeout = TimeSpan.FromSeconds(10),
+                UseProxy = sslOptions.UseProxy,
                 SslOptions = new SslClientAuthenticationOptions
                 {
                     // gRPC always runs over HTTP/2, and setting ALPN explicitly is required
@@ -93,11 +92,10 @@ public class EtcdClientFactory : IEtcdClientFactory
 
             if (!string.IsNullOrWhiteSpace(sslOptions.ServerCertificateAuthorityPath))
             {
-                var caCertificate = EtcdTlsCertificateLoader.LoadCertificateAuthority(
+                var caCertificates = EtcdTlsCertificateLoader.LoadCertificateAuthorities(
                     sslOptions.ServerCertificateAuthorityPath);
-                ownedCertificates.Add(caCertificate);
 
-                // CustomRootTrust makes the configured CA exclusive instead of additive,
+                // CustomRootTrust makes the configured CAs exclusive instead of additive,
                 // and serverAuth prevents a certificate issued for another purpose from
                 // being accepted for the etcd server.
                 var chainPolicy = new X509ChainPolicy
@@ -106,9 +104,14 @@ public class EtcdClientFactory : IEtcdClientFactory
                     RevocationMode = sslOptions.RevocationMode,
                     DisableCertificateDownloads = true
                 };
-                chainPolicy.CustomTrustStore.Add(caCertificate);
-                chainPolicy.ApplicationPolicy.Add(new Oid(ServerAuthOid));
 
+                foreach (var caCertificate in caCertificates)
+                {
+                    ownedCertificates.Add(caCertificate);
+                    chainPolicy.CustomTrustStore.Add(caCertificate);
+                }
+
+                chainPolicy.ApplicationPolicy.Add(new Oid(ServerAuthOid));
                 socketsHandler.SslOptions.CertificateChainPolicy = chainPolicy;
             }
 

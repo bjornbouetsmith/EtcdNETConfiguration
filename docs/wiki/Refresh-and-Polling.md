@@ -56,9 +56,38 @@ When `RedactConfigurationValues` is `true` (the default), values are replaced wi
 
 ## Timeouts and errors
 
-`ConfigurationTimeout` limits individual etcd calls. The default is one second; the supported range is one second to 60 seconds.
+`ConfigurationTimeout` limits individual etcd calls. The default is one second; the supported range is one second to 60 seconds. Polls are also cancelled when the host stops, so shutdown is not blocked by a slow etcd read.
 
-If a poll times out, the poller logs a warning and continues on the next interval. Unexpected errors are logged and do not stop the hosted service.
+A single poll is limited by `MaximumConfigurationKeyCount` (default 10,000) and `MaximumConfigurationSizeBytes` (default 8 MiB). A read that exceeds either limit fails instead of allocating an unbounded dictionary.
+
+The poller distinguishes transient failures from permanent ones:
+
+- **Transient** failures, such as an unavailable endpoint, a deadline, or a cancelled request, are logged as errors and polling continues.
+- **Permanent** failures, such as `Unauthenticated`, `PermissionDenied`, invalid TLS material, or an invalid configuration, are also logged as errors. If `MaximumConsecutivePermanentFailures` (default 5) is reached, the poller logs a critical message and asks the host to stop. Set the option to `0` to keep polling and only expose the failure.
+
+A successful poll resets the consecutive permanent-failure count. The last failure is always available through `IEtcdPollerStatus`:
+
+```csharp
+public class EtcdHealthCheck
+{
+    private readonly IEtcdPollerStatus _status;
+
+    public EtcdHealthCheck(IEtcdPollerStatus status) => _status = status;
+
+    public bool IsHealthy()
+    {
+        if (!_status.IsHealthy)
+        {
+            // Log or report _status.LastFailure and _status.LastFailureTime.
+            return false;
+        }
+
+        return true;
+    }
+}
+```
+
+`IsHealthy` becomes `false` after a permanent failure and returns to `true` after the next successful poll. A transient failure is reported through `LastFailure` and `LastFailureTime` without making the poller unhealthy.
 
 ## Related pages
 

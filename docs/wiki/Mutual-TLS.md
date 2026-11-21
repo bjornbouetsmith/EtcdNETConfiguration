@@ -72,6 +72,7 @@ options.SslOptions = new SslOptions
 - Keep the private key readable only by the application, for example `chmod 600`.
 - The library owns certificates loaded from `ClientCertificatePath` and disposes them with the channel handler, including on failure paths. Caller-supplied `ClientCertificate` instances are never disposed.
 - PKCS#12 collections are supported, so intermediate certificates are presented to the server. PEM loading uses the leaf certificate only; use PKCS#12 when the client certificate depends on an intermediate chain.
+- `ServerCertificateAuthorityPath` accepts a single DER certificate or a PEM bundle with multiple trusted roots. Every certificate in the bundle is added to the custom trust store.
 - Certificate rotation requires an application restart because the channel is created at startup.
 - On Windows, Schannel cannot use ephemeral private keys. PEM and PKCS#12 material is re-imported into a temporary user key container without `PersistKeySet`; the key is released when the library disposes the certificate.
 - mTLS authenticates the client, but etcd RBAC still decides which keys the client may read. A valid client certificate with an overly broad role can read unrelated configuration. Scope the etcd role to the configuration prefix.

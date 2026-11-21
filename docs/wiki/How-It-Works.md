@@ -21,14 +21,16 @@
 | `EtcdConfigurationSource` | Performs the synchronous initial load while the host is built. |
 | `EtcdConfiguration` | Shared, thread-safe store for the current values and the `ConfigurationChanged` event. |
 | `EtcdConfigurationLoader` | Reads keys from etcd, diffs them against the previous snapshot, and logs changes. |
-| `EtcdPoller` | Hosted service that periodically calls the loader and publishes changes. |
+| `EtcdPoller` | Hosted service that periodically calls the loader, publishes changes, and exposes failure status through `IEtcdPollerStatus`. |
 | `EtcdConfigurationProvider` | Exposes the shared store to `Microsoft.Extensions.Configuration` and triggers `OnReload()`. |
 
 ## Design points
 
 - **Poll-based updates.** The library does not use etcd watches. It periodically reads all keys under `RootKey` and compares snapshots.
 - **Single shared store.** The initial source and the poller update the same `EtcdConfiguration` instance, so there is only one etcd-backed provider in the configuration chain.
-- **Change auditing.** The loader logs added, changed, and removed keys. Values can be redacted with `***` to avoid leaking secrets.
+- **Change auditing.** The loader logs added, changed, and removed keys. Values can be redacted with `***` to avoid leaking secrets; secret-like keys stay redacted even when full logging is enabled.
+- **Bounded reads.** Each read has a configurable key-count and byte-size limit, and it is cancelled when the host stops.
+- **Failure reporting.** The poller distinguishes transient from permanent failures and exposes the last failure and its timestamp for health checks.
 - **Fail-closed validation.** Misconfiguration is caught before the application begins serving traffic. TLS validation is deliberately strict and does not silently downgrade to plaintext.
 - **Options validation on start.** `ValidateDataAnnotations()` and `ValidateOnStart()` ensure the host cannot start with invalid options.
 

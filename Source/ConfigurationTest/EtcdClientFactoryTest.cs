@@ -1,4 +1,5 @@
 using Grpc.Core;
+using System;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Options;
 using ROOT.Etcd.Configuration;
@@ -52,7 +53,8 @@ public class EtcdClientFactoryTest
             channelOptions);
 
         Assert.Same(ChannelCredentials.SecureSsl, channelOptions.Credentials);
-        Assert.Null(channelOptions.HttpHandler);
+        Assert.NotNull(GetSocketsHandler(channelOptions));
+        Assert.True(channelOptions.DisposeHttpClient);
     }
 
     [Fact]
@@ -224,6 +226,78 @@ public class EtcdClientFactoryTest
         Assert.Contains(
             policy.ApplicationPolicy.Cast<Oid>(),
             oid => oid.Value == "1.3.6.1.5.5.7.3.1");
+    }
+
+    [Fact]
+    public void ConfigureChannel_WhenCaBundleIsProvided_TrustsEveryCertificate()
+    {
+        using var files = new TestCertificateFiles();
+        using var firstCertificateAuthority = TestCertificateFactory.CreateCertificateAuthority();
+        using var secondCertificateAuthority = TestCertificateFactory.CreateCertificateAuthority();
+        var bundlePath = files.PathFor("ca-bundle.crt");
+        File.WriteAllText(
+            bundlePath,
+            firstCertificateAuthority.ExportCertificatePem() +
+            Environment.NewLine +
+            secondCertificateAuthority.ExportCertificatePem());
+        var channelOptions = new GrpcChannelOptions();
+
+        EtcdClientFactory.ConfigureChannel(
+            new EtcdOptions
+            {
+                EndPoints = HttpsEndpoint,
+                SslOptions = new SslOptions
+                {
+                    UseSsl = true,
+                    ServerCertificateAuthorityPath = bundlePath
+                }
+            },
+            channelOptions);
+
+        var handler = GetSocketsHandler(channelOptions);
+        var policy = Assert.IsType<X509ChainPolicy>(handler.SslOptions.CertificateChainPolicy);
+        Assert.Equal(2, policy.CustomTrustStore.Count);
+    }
+
+    [Fact]
+    public void ConfigureChannel_ByDefault_DisablesTheSystemProxy()
+    {
+        var channelOptions = new GrpcChannelOptions();
+
+        EtcdClientFactory.ConfigureChannel(
+            new EtcdOptions
+            {
+                EndPoints = HttpsEndpoint,
+                SslOptions = new SslOptions
+                {
+                    UseSsl = true,
+                    ServerCertificateAuthorityPath = GetCaCertificatePath()
+                }
+            },
+            channelOptions);
+
+        Assert.False(GetSocketsHandler(channelOptions).UseProxy);
+    }
+
+    [Fact]
+    public void ConfigureChannel_WhenProxyIsEnabled_UsesTheSystemProxy()
+    {
+        var channelOptions = new GrpcChannelOptions();
+
+        EtcdClientFactory.ConfigureChannel(
+            new EtcdOptions
+            {
+                EndPoints = HttpsEndpoint,
+                SslOptions = new SslOptions
+                {
+                    UseSsl = true,
+                    ServerCertificateAuthorityPath = GetCaCertificatePath(),
+                    UseProxy = true
+                }
+            },
+            channelOptions);
+
+        Assert.True(GetSocketsHandler(channelOptions).UseProxy);
     }
 
     [Fact]

@@ -14,7 +14,7 @@ See [dotnet/runtime#65375](https://github.com/dotnet/runtime/issues/65375) for r
 
 Startup is fail-closed. Check the exception first:
 
-- `OptionsValidationException` means an option is invalid. Check `EndPoints`, `RootKey`, `RefreshInterval`, `ConfigurationTimeout`, and the TLS settings.
+- `OptionsValidationException` means an option is invalid. Check `EndPoints`, `RootKey`, `RefreshInterval`, `ConfigurationTimeout`, the read limits, and the TLS settings. `RootKey` must not be `/`.
 - TLS validation errors usually mean the endpoint scheme and `UseSsl` disagree, a certificate file is missing or invalid, or the client certificate lacks the `clientAuth` EKU.
 - Connection errors mean etcd is unreachable, the endpoint or port is wrong, or the network blocks the connection.
 
@@ -26,7 +26,10 @@ See [Validation and Startup](Validation-and-Startup) and [Configuration Options]
 2. Check the application logs for `ETCD polling is disabled because RefreshInterval is set to TimeSpan.Zero`.
 3. Confirm that changes are made under the configured `RootKey` prefix.
 4. Remember that the keys use `:` as the configuration hierarchy separator.
-5. Check for polling timeout warnings in the logs.
+5. Check for polling timeout warnings or permanent-failure messages in the logs.
+6. Resolve `IEtcdPollerStatus` to inspect `LastFailure`, `LastFailureTime`, `ConsecutivePermanentFailures`, and `IsHealthy`.
+
+A permanent failure such as `Unauthenticated`, `PermissionDenied`, or an invalid certificate is counted. After `MaximumConsecutivePermanentFailures`, the host stops. Fix the credential, role, or certificate, or raise the threshold if you want more retries.
 
 See [Refresh and Polling](Refresh-and-Polling).
 
@@ -41,6 +44,10 @@ Check the following:
 - For mutual TLS, the client certificate has a private key and `extendedKeyUsage=clientAuth`.
 
 See [TLS](TLS) and [Mutual TLS](Mutual-TLS).
+
+## Configuration values appear in logs
+
+`RedactConfigurationValues` defaults to `true`. If it is disabled, the library logs a startup warning, and it still redacts keys whose names look like secrets. Do not disable redaction in production. See [Configuration Options](Configuration-Options).
 
 ## Tests cannot start etcd
 

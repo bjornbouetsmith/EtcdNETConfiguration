@@ -1,6 +1,6 @@
 # Test Certificates
 
-These certificates are used by `docker-compose.tls.yml`, `docker-compose.mtls.yml`, and the TLS/mTLS integration tests. **They are for local development and testing only — never use them in production.**
+These certificates are used by `docker-compose.tls.yml`, `docker-compose.mtls.yml`, and the TLS/mTLS integration tests. **They are for local development and testing only — never use them in production.** The CA private key is intentionally unencrypted and the certificates are disposable; regenerate them at any time with the script below.
 
 All generated files are git-ignored. The integration test assembly generates them automatically when they are missing or older than one day. On Windows the generation runs in an Alpine container because `openssl` and `bash` are usually not available there; on Linux and macOS the script runs directly.
 
@@ -51,7 +51,7 @@ docker compose -f ../docker-compose.mtls.yml up -d --force-recreate
 
 Private keys are written with mode `600`. On Windows the test process reads them through the Windows filesystem; WSL users may need to adjust permissions before running tools such as `curl` inside WSL.
 
-The Windows test path uses `alpine:3.20`; override it for offline or mirrored environments with the `ETCD_TLS_CERT_DOCKER_IMAGE` environment variable.
+The Windows test path uses a digest-pinned Alpine image; override it for offline or mirrored environments with the `ETCD_TLS_CERT_DOCKER_IMAGE` environment variable. Pin any override to a digest for reproducible runs.
 
 ## Related pages
 

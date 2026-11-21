@@ -17,7 +17,8 @@ Full documentation is maintained in the [GitHub Wiki](https://github.com/bjornbo
 - **Live updates** without restarting the application. Refresh is poll-based, not etcd watch-based.
 - **Change auditing** that logs added, changed, and removed keys, with optional value redaction (`***`).
 - **Fail-closed startup**: invalid options, TLS problems, or an unreachable etcd cluster prevent the host from starting.
-- **TLS and mutual TLS** support, including private CAs and file-based or in-memory client certificates.
+- **Bounded reads and failure reporting**: configurable key-count and size limits, cancellation on shutdown, and `IEtcdPollerStatus` for health checks.
+- **TLS and mutual TLS** support, including private CAs, PEM CA bundles, and file-based or in-memory client certificates.
 
 ## How to use it
 

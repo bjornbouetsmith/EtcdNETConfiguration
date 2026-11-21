@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Grpc.Core;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ROOT.Etcd.Configuration;
 
@@ -146,6 +148,129 @@ public class EtcdPollerTest
 
         Assert.Equal(1, updater.PublishCount);
         Assert.Equal(2, timer.ChangeCount);
+    }
+
+    [Fact]
+    public async Task TimerCallback_WhenPermanentFailuresReachThreshold_StopsTheHost()
+    {
+        var loader = new FakeConfigurationLoader(_ =>
+            throw new RpcException(new Status(StatusCode.Unauthenticated, "bad credentials")));
+        var updater = new RecordingUpdater();
+        var logger = new TestLogger<EtcdPoller>();
+        var timeProvider = CreateTimeProvider();
+        var applicationLifetime = new RecordingApplicationLifetime();
+        var options = CreateOptions(TimeSpan.FromSeconds(30));
+        options.MaximumConsecutivePermanentFailures = 2;
+        using var poller = new EtcdPoller(
+            loader,
+            updater,
+            options,
+            timeProvider,
+            logger,
+            applicationLifetime);
+
+        await poller.StartAsync(CancellationToken.None);
+        var timer = timeProvider.Timer;
+        timer.Fire();
+
+        Assert.Equal(1, poller.ConsecutivePermanentFailures);
+        Assert.False(poller.IsHealthy);
+        Assert.NotNull(poller.LastFailure);
+        Assert.Equal(timeProvider.GetUtcNow(), poller.LastFailureTime);
+        Assert.Equal(0, applicationLifetime.StopCount);
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Error &&
+                     entry.Message == "Permanent error occured while polling for configuration changes");
+
+        timer.Fire();
+
+        Assert.Equal(2, poller.ConsecutivePermanentFailures);
+        Assert.Equal(1, applicationLifetime.StopCount);
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Critical &&
+                     entry.Message.Contains("consecutive permanent", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TimerCallback_WhenFailureIsTransient_KeepsPollerHealthy()
+    {
+        var loader = new FakeConfigurationLoader(_ =>
+            throw new RpcException(new Status(StatusCode.Unavailable, "etcd is unavailable")));
+        var updater = new RecordingUpdater();
+        var logger = new TestLogger<EtcdPoller>();
+        var timeProvider = CreateTimeProvider();
+        var applicationLifetime = new RecordingApplicationLifetime();
+        using var poller = new EtcdPoller(
+            loader,
+            updater,
+            CreateOptions(TimeSpan.FromSeconds(30)),
+            timeProvider,
+            logger,
+            applicationLifetime);
+
+        await poller.StartAsync(CancellationToken.None);
+        timeProvider.Timer.Fire();
+
+        Assert.Equal(0, poller.ConsecutivePermanentFailures);
+        Assert.True(poller.IsHealthy);
+        Assert.NotNull(poller.LastFailure);
+        Assert.Equal(0, applicationLifetime.StopCount);
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Error &&
+                     entry.Message == "Unexpected error occured while polling for configuration changes");
+    }
+
+    [Fact]
+    public async Task TimerCallback_AfterSuccessfulPoll_ResetsPermanentFailureCount()
+    {
+        var loader = new FakeConfigurationLoader(call => call == 1
+            ? throw new RpcException(new Status(StatusCode.PermissionDenied, "no access"))
+            : CreateData(false));
+        var updater = new RecordingUpdater();
+        var timeProvider = CreateTimeProvider();
+        using var poller = new EtcdPoller(
+            loader,
+            updater,
+            CreateOptions(TimeSpan.FromSeconds(30)),
+            timeProvider,
+            new TestLogger<EtcdPoller>());
+
+        await poller.StartAsync(CancellationToken.None);
+        var timer = timeProvider.Timer;
+        timer.Fire();
+
+        Assert.Equal(1, poller.ConsecutivePermanentFailures);
+        Assert.False(poller.IsHealthy);
+
+        timer.Fire();
+
+        Assert.Equal(0, poller.ConsecutivePermanentFailures);
+        Assert.True(poller.IsHealthy);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenRedactionIsDisabled_LogsWarning()
+    {
+        var timeProvider = CreateTimeProvider();
+        var logger = new TestLogger<EtcdPoller>();
+        var options = CreateOptions(TimeSpan.Zero);
+        options.RedactConfigurationValues = false;
+        using var poller = new EtcdPoller(
+            new FakeConfigurationLoader(_ => CreateData(false)),
+            new RecordingUpdater(),
+            options,
+            timeProvider,
+            logger);
+
+        await poller.StartAsync(CancellationToken.None);
+
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Warning &&
+                     entry.Message.Contains("RedactConfigurationValues is false", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -385,6 +510,21 @@ public class EtcdPollerTest
         return new ConfigurationData(data, changesPresent);
     }
 
+    private sealed class RecordingApplicationLifetime : IHostApplicationLifetime
+    {
+        private int _stopCount;
+
+        public CancellationToken ApplicationStarted => CancellationToken.None;
+
+        public CancellationToken ApplicationStopping => CancellationToken.None;
+
+        public CancellationToken ApplicationStopped => CancellationToken.None;
+
+        public int StopCount => Volatile.Read(ref _stopCount);
+
+        public void StopApplication() => Interlocked.Increment(ref _stopCount);
+    }
+
     private sealed class FakeConfigurationLoader : IEtcdConfigurationLoader
     {
         private readonly Func<int, ConfigurationData> _load;
@@ -397,7 +537,7 @@ public class EtcdPollerTest
 
         public int CallCount => Volatile.Read(ref _callCount);
 
-        public ConfigurationData LoadConfiguration()
+        public ConfigurationData LoadConfiguration(CancellationToken cancellationToken = default)
         {
             var call = Interlocked.Increment(ref _callCount);
             return _load(call);

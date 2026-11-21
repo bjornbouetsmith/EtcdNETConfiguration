@@ -41,6 +41,12 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
         var useSsl = sslOptions?.UseSsl == true;
         var hasTlsSettings = sslOptions is not null && HasAnyTlsSetting(sslOptions);
 
+        if (!string.IsNullOrWhiteSpace(options.RootKey) &&
+            string.Equals(options.RootKey.Trim(), "/", StringComparison.Ordinal))
+        {
+            failures.Add("RootKey must be a non-root prefix; '/' would load every key in etcd.");
+        }
+
         if (endpoints.Count > 1 &&
             endpoints.Select(endpoint => endpoint.Scheme).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
         {
@@ -88,14 +94,6 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
             throw new OptionsValidationException(nameof(EtcdOptions), typeof(EtcdOptions), failures);
         }
     }
-
-    /// <summary>
-    /// Gets whether a custom handler is needed to carry TLS material.
-    /// </summary>
-    internal static bool HasCustomTlsMaterial(SslOptions sslOptions) =>
-        !string.IsNullOrWhiteSpace(sslOptions.ServerCertificateAuthorityPath) ||
-        sslOptions.ClientCertificate is not null ||
-        !string.IsNullOrWhiteSpace(sslOptions.ClientCertificatePath);
 
     private static bool HasAnyTlsSetting(SslOptions sslOptions) =>
         !string.IsNullOrWhiteSpace(sslOptions.ServerCertificateAuthorityPath) ||
@@ -189,13 +187,21 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
             return;
         }
 
+        X509Certificate2Collection? certificates = null;
         try
         {
-            using var certificate = EtcdTlsCertificateLoader.LoadCertificateAuthority(path);
+            certificates = EtcdTlsCertificateLoader.LoadCertificateAuthorities(path);
         }
         catch (Exception exception) when (exception is CryptographicException or IOException or UnauthorizedAccessException or ArgumentException)
         {
             failures.Add($"The etcd server CA certificate file '{path}' could not be loaded as a certificate.");
+        }
+        finally
+        {
+            if (certificates is not null)
+            {
+                EtcdTlsCertificateLoader.DisposeCertificates(certificates);
+            }
         }
     }
 

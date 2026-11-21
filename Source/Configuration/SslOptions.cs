@@ -57,6 +57,13 @@ public record SslOptions
     public X509RevocationMode RevocationMode { get; set; } = X509RevocationMode.NoCheck;
 
     /// <summary>
+    /// Gets or sets whether the gRPC HTTP handler uses the system proxy.
+    /// Defaults to false so TLS traffic cannot be silently routed through an
+    /// unexpected proxy. Set to true only when a proxy is required.
+    /// </summary>
+    public bool UseProxy { get; set; }
+
+    /// <summary>
     /// Formats the record for diagnostics without exposing the client certificate or its password.
     /// </summary>
     /// <param name="builder">The builder receiving the formatted values.</param>
@@ -70,6 +77,7 @@ public record SslOptions
         builder.Append(", ClientCertificateKeyPath = ").Append(ClientCertificateKeyPath);
         builder.Append(", ClientCertificatePassword = ").Append(ClientCertificatePassword is null ? "null" : "<redacted>");
         builder.Append(", RevocationMode = ").Append(RevocationMode);
+        builder.Append(", UseProxy = ").Append(UseProxy);
         return true;
     }
 }

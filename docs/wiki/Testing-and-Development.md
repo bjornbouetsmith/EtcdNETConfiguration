@@ -44,6 +44,8 @@ The self-signed test certificates are generated automatically by the test assemb
 
 The container image can be overridden with `ETCD_TLS_CERT_DOCKER_IMAGE`. Generated certificate files are git-ignored.
 
+The Docker images used by the compose files and certificate generation are pinned to a digest so test runs are reproducible and a moved tag cannot change the environment. Update the digest deliberately when upgrading etcd or Alpine.
+
 ## Point tests at an external TLS endpoint
 
 The TLS tests run against `https://127.0.0.1:12379` by default. Point them at an external TLS-enabled etcd with:
