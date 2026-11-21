@@ -2,8 +2,6 @@ using Microsoft.Extensions.Options;
 using ROOT.Etcd.Configuration;
 using System;
 using System.IO;
-using System.Linq;
-using System.Security.Cryptography.X509Certificates;
 
 namespace ROOT.Etcd.ConfigurationTest;
 

@@ -285,7 +285,7 @@ public abstract class IntegrationTestBase
             "true",
             StringComparison.OrdinalIgnoreCase);
 
-    public EtcdClient CreateClient()
+    public static EtcdClient CreateClient()
     {
         var client = new EtcdClient(EtcdServer, configureChannelOptions: (channelOptions) =>
         {
@@ -299,7 +299,7 @@ public abstract class IntegrationTestBase
     /// Creates a client through the library factory with SSL enabled and
     /// the test CA used to validate the server certificate.
     /// </summary>
-    public IEtcdClient CreateTlsClient()
+    public static IEtcdClient CreateTlsClient()
     {
         return new EtcdClientFactory().CreateClient(new EtcdOptions
         {
@@ -315,7 +315,7 @@ public abstract class IntegrationTestBase
     /// <summary>
     /// Creates an mTLS client with the CA and the file-based test client certificate.
     /// </summary>
-    public IEtcdClient CreateMtlsClient()
+    public static IEtcdClient CreateMtlsClient()
     {
         return new EtcdClientFactory().CreateClient(new EtcdOptions
         {
@@ -333,7 +333,7 @@ public abstract class IntegrationTestBase
     /// <summary>
     /// Creates an mTLS client with the CA and a caller-owned in-memory certificate.
     /// </summary>
-    public IEtcdClient CreateMtlsClient(X509Certificate2 certificate)
+    public static IEtcdClient CreateMtlsClient(X509Certificate2 certificate)
     {
         return new EtcdClientFactory().CreateClient(new EtcdOptions
         {

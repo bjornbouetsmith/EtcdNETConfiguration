@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ROOT.Etcd.Configuration;
 using System;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
 namespace ROOT.Etcd.ConfigurationTest;
