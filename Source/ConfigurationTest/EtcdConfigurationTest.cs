@@ -170,6 +170,58 @@ public class EtcdConfigurationTest : IntegrationTestBase
         }
     }
 
+    [Fact, Trait("Category", "Integration")]
+    public async Task DeepNestedOptionsAreBoundCorrectly()
+    {
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
+        Assert.True(containerUp);
+
+        var rootKey = $"/review-{Guid.NewGuid():N}";
+
+        using var client = CreateClient();
+        
+        await client.PutAsync($"{rootKey}:Kafka:BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}:Kafka:BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}:Kafka:Nested:Value", "NestedValue", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}:Kafka:Nested:DeepNested:Value", "DeepNestedValue", cancellationToken: TestContext.Current.CancellationToken);
+
+        try
+        {
+            var builder = Host.CreateApplicationBuilder();
+            builder.Logging.ClearProviders();
+            builder.Logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
+
+
+            builder.AddEtcdConfiguration(options =>
+            {
+                options.EndPoints = _etcdServer;
+                options.RootKey = rootKey;
+                options.RefreshInterval = TimeSpan.FromMilliseconds(100);
+            });
+                        
+            builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(rootKey));
+
+            using var host = builder.Build();
+            
+            await host.StartAsync(TestContext.Current.CancellationToken);
+
+            var options = host.Services.GetRequiredService<IOptions<AppOptions>>();
+
+            var appOptions = options.Value;
+            Assert.NotNull(appOptions.Kafka);
+            Assert.NotNull(appOptions.Kafka.Nested);
+            Assert.Equal("NestedValue", appOptions.Kafka.Nested.Value);
+            Assert.NotNull(appOptions.Kafka.Nested.DeepNested);
+            Assert.Equal("DeepNestedValue", appOptions.Kafka.Nested.DeepNested.Value);
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await client.DeleteRangeAsync(rootKey, cancellationToken: TestContext.Current.CancellationToken);
+        }
+    }
+
     public class TestService
     {
         private readonly ILogger<TestService> _logger;
@@ -195,5 +247,17 @@ public class EtcdConfigurationTest : IntegrationTestBase
     public class KafkaOptions
     {
         public required List<string> BootStrapServers { get; set; }
+        
+        public NestedOptions? Nested { get; set; }
+    }
+
+    public class NestedOptions
+    {
+        public required string Value { get; set; }
+        public DeepNestedOptions? DeepNested { get; set; }
+    }
+    public class DeepNestedOptions
+    {
+        public required string Value { get; set; }
     }
 }
