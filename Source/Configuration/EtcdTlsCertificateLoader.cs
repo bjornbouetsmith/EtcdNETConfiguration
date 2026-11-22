@@ -11,10 +11,31 @@ namespace ROOT.Etcd.Configuration;
 internal static class EtcdTlsCertificateLoader
 {
     /// <summary>
-    /// Loads a PEM-encoded CA certificate from disk.
+    /// Loads every certificate in a PEM CA bundle, or a single DER certificate.
     /// </summary>
-    internal static X509Certificate2 LoadCertificateAuthority(string path) =>
-        X509CertificateLoader.LoadCertificateFromFile(path);
+    internal static X509Certificate2Collection LoadCertificateAuthorities(string path)
+    {
+        var certificates = new X509Certificate2Collection();
+
+        try
+        {
+            certificates.ImportFromPemFile(path);
+        }
+        catch (CryptographicException)
+        {
+            // Not PEM (or a malformed PEM bundle). Fall back to DER so a single
+            // binary certificate file keeps working.
+            DisposeCertificates(certificates);
+            certificates.Add(X509CertificateLoader.LoadCertificateFromFile(path));
+        }
+
+        if (certificates.Count == 0)
+        {
+            throw new CryptographicException("The CA bundle does not contain any certificates.");
+        }
+
+        return certificates;
+    }
 
     /// <summary>
     /// Loads the client certificate collection for a PEM certificate and key or a PKCS#12 file.

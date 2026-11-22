@@ -151,6 +151,44 @@ public class EtcdTlsOptionsValidatorTest
             failure => failure.Contains("not a valid absolute", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("/")]
+    [InlineData(" / ")]
+    public void RootKeyIsTheEtcdRoot_Fails(string rootKey)
+    {
+        var options = new EtcdOptions { RootKey = rootKey };
+
+        Assert.Contains(
+            EtcdTlsOptionsValidator.Validate(options),
+            failure => failure.Contains("non-root prefix", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CaBundleWithMultipleCertificates_Succeeds()
+    {
+        using var files = new TestCertificateFiles();
+        using var firstCertificateAuthority = TestCertificateFactory.CreateCertificateAuthority();
+        using var secondCertificateAuthority = TestCertificateFactory.CreateCertificateAuthority();
+        var bundlePath = files.PathFor("ca-bundle.crt");
+        File.WriteAllText(
+            bundlePath,
+            firstCertificateAuthority.ExportCertificatePem() +
+            Environment.NewLine +
+            secondCertificateAuthority.ExportCertificatePem());
+
+        var options = new EtcdOptions
+        {
+            EndPoints = HttpsEndpoint,
+            SslOptions = new SslOptions
+            {
+                UseSsl = true,
+                ServerCertificateAuthorityPath = bundlePath
+            }
+        };
+
+        Assert.Empty(EtcdTlsOptionsValidator.Validate(options));
+    }
+
     [Fact]
     public void UseSslTrueWithoutTlsMaterial_Succeeds()
     {

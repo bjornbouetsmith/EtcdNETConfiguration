@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -175,6 +176,40 @@ public class EtcdConfigurationUnitTest
 
         Assert.True(reads > 0);
         Assert.Equal("2000", configuration.Configuration["/configuration:one"]);
+    }
+
+    [Fact]
+    public void Configuration_ReturnsAReadOnlyView()
+    {
+        var configuration = new EtcdConfiguration();
+        configuration.PublishConfiguration(new Dictionary<string, string?>
+        {
+            ["/configuration:one"] = "value-one"
+        });
+
+        var snapshot = configuration.Configuration;
+
+        Assert.False(snapshot is Dictionary<string, string?>);
+        var dictionary = Assert.IsType<IDictionary<string, string?>>(snapshot, false);
+        Assert.Throws<NotSupportedException>(() => dictionary["/configuration:one"] = "changed");
+        Assert.Equal("value-one", configuration.Configuration["/configuration:one"]);
+    }
+
+    [Fact]
+    public void ConfigurationChanged_ReceivesAReadOnlyView()
+    {
+        var configuration = new EtcdConfiguration();
+        IReadOnlyDictionary<string, string?>? changes = null;
+        configuration.ConfigurationChanged += received => changes = received;
+
+        configuration.PublishConfiguration(new Dictionary<string, string?>
+        {
+            ["/configuration:one"] = "value-one"
+        });
+
+        Assert.NotNull(changes);
+        var dictionary = Assert.IsType<IDictionary<string, string?>>(changes, false);
+        Assert.Throws<NotSupportedException>(() => dictionary["/configuration:one"] = "changed");
     }
 
     [Fact]

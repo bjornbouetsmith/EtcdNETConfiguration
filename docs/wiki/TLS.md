@@ -26,6 +26,8 @@ When `SslOptions` is `null` or `SslOptions.UseSsl` is `false`, the gRPC channel 
 
 When `ServerCertificateAuthorityPath` is not set, the operating system trust store is used.
 
+The CA file may contain a single DER certificate or a PEM bundle with multiple roots. Every certificate in a PEM bundle is trusted.
+
 When a custom CA is configured:
 
 - Only that CA is trusted (`CustomRootTrust`), not an additive trust store.
@@ -35,6 +37,8 @@ When a custom CA is configured:
 
 The default `RevocationMode` is `NoCheck`, which keeps private CAs without CRL or OCSP endpoints working. Use `Online` or `Offline` when revocation information is available.
 
+The gRPC handler uses an explicit 10-second connect timeout. The system proxy is disabled by default so TLS traffic cannot be silently routed through an unexpected proxy; set `SslOptions.UseProxy = true` when a proxy is required.
+
 ## Configuration reference
 
 | Option | Description |
@@ -42,6 +46,7 @@ The default `RevocationMode` is `NoCheck`, which keeps private CAs without CRL o
 | `SslOptions.UseSsl` | The real TLS switch. The endpoint scheme alone does not enable TLS. |
 | `SslOptions.ServerCertificateAuthorityPath` | PEM CA certificate used to validate the etcd server certificate. |
 | `SslOptions.RevocationMode` | Revocation mode for the etcd server certificate chain. Defaults to `NoCheck`. |
+| `SslOptions.UseProxy` | Whether to use the system proxy. Defaults to `false`. |
 
 See [Configuration Options](Configuration-Options) for the full options table and validation rules.
 

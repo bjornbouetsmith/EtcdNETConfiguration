@@ -7,6 +7,7 @@ using Etcdserverpb;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Mvccpb;
 using ROOT.Etcd.Configuration;
@@ -183,6 +184,29 @@ public class EtcdConfigurationSourceTest
         Assert.Empty(sharedConfiguration.Configuration);
     }
     
+    [Fact]
+    public void Build_WhenInitialLoadFails_LogsErrorAndRethrows()
+    {
+        var client = new Mock<IEtcdClient>();
+        client
+            .Setup(GetRangeSetup())
+            .Throws(new InvalidOperationException("etcd is unavailable"));
+        var factory = CreateFactory(client);
+        var logger = new TestLogger<EtcdConfigurationSource>();
+        var source = new EtcdConfigurationSource(
+            new EtcdOptions(),
+            new EtcdConfiguration(),
+            factory.Object,
+            logger);
+
+        Assert.Throws<InvalidOperationException>(() => source.Build(new ConfigurationBuilder()));
+
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Error &&
+                     entry.Message == "Failed to load the initial etcd configuration. The host will not start.");
+    }
+
     private static EtcdConfigurationSource CreateSource(IEtcdClientFactory factory) =>
         CreateSource(new EtcdConfiguration(), factory);
 

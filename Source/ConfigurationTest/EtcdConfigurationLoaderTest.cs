@@ -23,6 +23,7 @@ public class EtcdConfigurationLoaderTest
         RedactConfigurationValues = false
     };
     private DateTime? _lastDeadline;
+    private CancellationToken _lastCancellationToken;
 
     public EtcdConfigurationLoaderTest()
     {
@@ -33,7 +34,11 @@ public class EtcdConfigurationLoaderTest
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
             .Callback<string, Metadata, DateTime?, CancellationToken>(
-                (_, _, deadline, _) => _lastDeadline = deadline)
+                (_, _, deadline, cancellationToken) =>
+                {
+                    _lastDeadline = deadline;
+                    _lastCancellationToken = cancellationToken;
+                })
             .Returns(() => _responses.Dequeue());
     }
 
@@ -44,7 +49,7 @@ public class EtcdConfigurationLoaderTest
             ("/configuration:one", "value-one"),
             ("/configuration:two", "value-two"));
 
-        var result = CreateLoader().LoadConfiguration();
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.Configuration.Count);
         Assert.Equal("value-one", result.Configuration["/configuration:one"]);
@@ -58,7 +63,7 @@ public class EtcdConfigurationLoaderTest
         _options.RootKey = "/custom-root";
         EnqueueResponse(("/custom-root:key", "value"));
 
-        CreateLoader().LoadConfiguration();
+        CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
         _etcdClient.Verify(
             client => client.GetRange(
@@ -76,7 +81,7 @@ public class EtcdConfigurationLoaderTest
         _options.ConfigurationTimeout = TimeSpan.FromSeconds(10);
         EnqueueResponse();
 
-        CreateLoader(new TestTimeProvider(now)).LoadConfiguration();
+        CreateLoader(new TestTimeProvider(now)).LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Equal(now.Add(_options.ConfigurationTimeout).DateTime, _lastDeadline);
     }
@@ -91,12 +96,12 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse();
 
         var loader = CreateLoader(timeProvider);
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Equal(now.Add(_options.ConfigurationTimeout).DateTime, _lastDeadline);
 
         timeProvider.Advance(TimeSpan.FromMinutes(2));
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Equal(
             now.AddMinutes(2).Add(_options.ConfigurationTimeout).DateTime,
@@ -110,7 +115,7 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse();
 
         var before = TimeProvider.System.GetUtcNow().Add(_options.ConfigurationTimeout);
-        CreateLoader().LoadConfiguration();
+        CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
         var after = TimeProvider.System.GetUtcNow().Add(_options.ConfigurationTimeout);
 
         Assert.NotNull(_lastDeadline);
@@ -122,7 +127,7 @@ public class EtcdConfigurationLoaderTest
     {
         EnqueueResponse();
 
-        var result = CreateLoader().LoadConfiguration();
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Empty(result.Configuration);
         Assert.True(result.ChangesPresent);
@@ -136,10 +141,10 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse();
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Empty(result.Configuration);
         Assert.False(result.ChangesPresent);
@@ -151,7 +156,7 @@ public class EtcdConfigurationLoaderTest
     {
         EnqueueResponse(("/configuration:n\u00f8kkel", "verd\u00ef"));
 
-        var result = CreateLoader().LoadConfiguration();
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Equal("verd\u00ef", result.Configuration["/configuration:n\u00f8kkel"]);
     }
@@ -163,7 +168,7 @@ public class EtcdConfigurationLoaderTest
             ("/configuration:one", "value-one"),
             ("/configuration:two", "value-two"));
 
-        var result = CreateLoader().LoadConfiguration();
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         Assert.Equal(2, _logger.Entries.Count);
@@ -184,7 +189,7 @@ public class EtcdConfigurationLoaderTest
             new EtcdOptions { RootKey = "/configuration" },
             _logger);
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         var entry = Assert.Single(_logger.Entries);
@@ -199,7 +204,7 @@ public class EtcdConfigurationLoaderTest
         _options.RedactConfigurationValues = true;
         EnqueueResponse(("/configuration:one", "value-one"));
 
-        var result = CreateLoader().LoadConfiguration();
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         var entry = Assert.Single(_logger.Entries);
@@ -216,10 +221,10 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse(("/configuration:one", "value-one"));
         EnqueueResponse(("/configuration:one", "new-value"));
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         var entry = Assert.Single(_logger.Entries);
@@ -238,10 +243,10 @@ public class EtcdConfigurationLoaderTest
             ("/configuration:two", "value-two"));
         EnqueueResponse(("/configuration:one", "value-one"));
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         var entry = Assert.Single(_logger.Entries);
@@ -261,10 +266,10 @@ public class EtcdConfigurationLoaderTest
             ("/configuration:one", "value-one"));
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.False(result.ChangesPresent);
         Assert.Empty(_logger.Entries);
@@ -279,10 +284,10 @@ public class EtcdConfigurationLoaderTest
             ("/configuration:two", "value-two"));
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         Assert.True(result.Configuration.ContainsKey("/configuration:two"));
@@ -301,10 +306,10 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse(("/configuration:one", "value-one"));
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         var entry = Assert.Single(_logger.Entries);
@@ -325,10 +330,10 @@ public class EtcdConfigurationLoaderTest
             ("/configuration:two", "value-two"));
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         Assert.Equal("new-value", result.Configuration["/configuration:one"]);
@@ -345,10 +350,10 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse(("/configuration:one", string.Empty));
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         var entry = Assert.Single(_logger.Entries);
@@ -370,10 +375,10 @@ public class EtcdConfigurationLoaderTest
             ("/configuration:four", "value-four"));
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         Assert.Equal(3, _logger.Entries.Count);
@@ -398,10 +403,10 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse(("/configuration:one", "value-one"));
 
         var loader = CreateLoader();
-        loader.LoadConfiguration();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
 
-        var result = loader.LoadConfiguration();
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(result.ChangesPresent);
         var entry = Assert.Single(_logger.Entries);
@@ -417,13 +422,68 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse(("/configuration:one", "value-two"));
 
         var loader = CreateLoader();
-        var firstResult = loader.LoadConfiguration();
-        var secondResult = loader.LoadConfiguration();
+        var firstResult = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        var secondResult = loader.LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.True(firstResult.ChangesPresent);
         Assert.True(secondResult.ChangesPresent);
         Assert.Equal("value-one", firstResult.Configuration["/configuration:one"]);
         Assert.Equal("value-two", secondResult.Configuration["/configuration:one"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_PassesTheCancellationTokenToEtcd()
+    {
+        using var cancellationTokenSource = new CancellationTokenSource();
+        EnqueueResponse();
+
+        CreateLoader().LoadConfiguration(cancellationTokenSource.Token);
+
+        Assert.Equal(cancellationTokenSource.Token, _lastCancellationToken);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenKeyCountLimitIsExceeded_Throws()
+    {
+        _options.MaximumConfigurationKeyCount = 1;
+        EnqueueResponse(
+            ("/configuration:one", "value-one"),
+            ("/configuration:two", "value-two"));
+
+        var exception = Assert.ThrowsAny<InvalidOperationException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("MaximumConfigurationKeyCount", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenSizeLimitIsExceeded_Throws()
+    {
+        _options.MaximumConfigurationSizeBytes = 5;
+        EnqueueResponse(("/configuration:one", "value-one"));
+
+        var exception = Assert.ThrowsAny<InvalidOperationException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("MaximumConfigurationSizeBytes", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenRedactionIsDisabled_StillRedactsSecretLikeKeys()
+    {
+        _options.RedactConfigurationValues = false;
+        EnqueueResponse(
+            ("/configuration:database:password", "super-secret"),
+            ("/configuration:display-name", "visible"));
+
+        CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Contains(
+            _logger.Entries,
+            entry => entry.Message == "Configuration key /configuration:database:password was added with value ***");
+        Assert.Contains(
+            _logger.Entries,
+            entry => entry.Message == "Configuration key /configuration:display-name was added with value visible");
     }
 
     private EtcdConfigurationLoader CreateLoader() => new(_etcdClient.Object, _options, _logger);

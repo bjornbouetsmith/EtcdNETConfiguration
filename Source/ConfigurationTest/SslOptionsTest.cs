@@ -17,6 +17,7 @@ public class SslOptionsTest
         Assert.Null(options.ClientCertificateKeyPath);
         Assert.Null(options.ClientCertificatePassword);
         Assert.Equal(X509RevocationMode.NoCheck, options.RevocationMode);
+        Assert.False(options.UseProxy);
     }
 
     [Fact]
@@ -32,7 +33,8 @@ public class SslOptionsTest
             ClientCertificatePath = "/certs/client.crt",
             ClientCertificateKeyPath = "/certs/client.key",
             ClientCertificatePassword = "not-a-real-password",
-            RevocationMode = X509RevocationMode.Offline
+            RevocationMode = X509RevocationMode.Offline,
+            UseProxy = true
         };
 
         Assert.True(options.UseSsl);
@@ -42,6 +44,7 @@ public class SslOptionsTest
         Assert.Equal("/certs/client.key", options.ClientCertificateKeyPath);
         Assert.Equal("not-a-real-password", options.ClientCertificatePassword);
         Assert.Equal(X509RevocationMode.Offline, options.RevocationMode);
+        Assert.True(options.UseProxy);
     }
 
     [Fact]

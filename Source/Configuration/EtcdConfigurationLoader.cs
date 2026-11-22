@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace ROOT.Etcd.Configuration;
 
@@ -13,8 +14,9 @@ public interface IEtcdConfigurationLoader
     /// <summary>
     /// Loads the current configuration from etcd and determines if any changes occurred.
     /// </summary>
+    /// <param name="cancellationToken">Token that cancels the etcd read and shutdown.</param>
     /// <returns>Structure containing the loaded configuration and a flag indicating whether changes were detected.</returns>
-    ConfigurationData LoadConfiguration();
+    ConfigurationData LoadConfiguration(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -24,6 +26,17 @@ public interface IEtcdConfigurationLoader
 /// <param name="Configuration">Current key-value pairs from etcd.</param>
 /// <param name="ChangesPresent">True if any keys were added, changed, or removed since the last load.</param>
 public readonly record struct ConfigurationData(IReadOnlyDictionary<string, string?> Configuration, bool ChangesPresent);
+
+/// <summary>
+/// Thrown when a single etcd read exceeds the configured key-count or size limit.
+/// </summary>
+internal sealed class EtcdConfigurationLimitExceededException : InvalidOperationException
+{
+    internal EtcdConfigurationLimitExceededException(string message)
+        : base(message)
+    {
+    }
+}
 
 /// <summary>
 /// Loads configuration data from etcd and compares it with previous values to detect changes.
@@ -38,6 +51,12 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     private readonly TimeProvider _timeProvider;
 
     private const string RedactedValue = "***";
+
+    private static readonly string[] SensitiveKeyTokens =
+    [
+        "password", "pwd", "secret", "token", "credential", "connectionstring",
+        "apikey", "api-key", "privatekey", "private-key"
+    ];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EtcdConfigurationLoader"/> class.
@@ -75,14 +94,33 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     }
 
     /// <inheritdoc/>
-    public ConfigurationData LoadConfiguration()
+    public ConfigurationData LoadConfiguration(CancellationToken cancellationToken = default)
     {
         var data = new Dictionary<string, string?>();
         var deadLine = _timeProvider.GetUtcNow().Add(_options.ConfigurationTimeout);
-        var response = _etcdClient.GetRange(_options.RootKey, deadline: deadLine.UtcDateTime);
+        var response = _etcdClient.GetRange(
+            _options.RootKey,
+            deadline: deadLine.UtcDateTime,
+            cancellationToken: cancellationToken);
 
+        var totalSize = 0L;
         foreach (var kv in response.Kvs)
         {
+            if (data.Count >= _options.MaximumConfigurationKeyCount)
+            {
+                throw new EtcdConfigurationLimitExceededException(
+                    $"The etcd response exceeded MaximumConfigurationKeyCount ({_options.MaximumConfigurationKeyCount}). " +
+                    "Narrow RootKey or raise the limit explicitly.");
+            }
+
+            totalSize += (long)kv.Key.Length + kv.Value.Length;
+            if (totalSize > _options.MaximumConfigurationSizeBytes)
+            {
+                throw new EtcdConfigurationLimitExceededException(
+                    $"The etcd response exceeded MaximumConfigurationSizeBytes ({_options.MaximumConfigurationSizeBytes}). " +
+                    "Narrow RootKey or raise the limit explicitly.");
+            }
+
             var key = kv.Key.ToStringUtf8();
             var value = kv.Value.ToStringUtf8();
 
@@ -107,7 +145,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
                 _logger.LogInformation(
                     "Configuration key {Key} was added with value {Value}",
                     kv.Key,
-                    GetValueForLog(kv.Value));
+                    GetValueForLog(kv.Key, kv.Value));
             }
 
             return true;
@@ -120,7 +158,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
                 _logger.LogInformation(
                     "Configuration key {Key} was added with value {Value}",
                     kv.Key,
-                    GetValueForLog(kv.Value));
+                    GetValueForLog(kv.Key, kv.Value));
                 changes = true;
             }
             else if (!string.Equals(previousValue, kv.Value, StringComparison.Ordinal))
@@ -128,8 +166,8 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
                 _logger.LogInformation(
                     "Configuration key {Key} changed from {PreviousValue} to {Value}",
                     kv.Key,
-                    GetValueForLog(previousValue),
-                    GetValueForLog(kv.Value));
+                    GetValueForLog(kv.Key, previousValue),
+                    GetValueForLog(kv.Key, kv.Value));
                 changes = true;
             }
         }
@@ -141,7 +179,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
                 _logger.LogInformation(
                     "Configuration key {Key} was removed; previous value was {PreviousValue}",
                     kv.Key,
-                    GetValueForLog(kv.Value));
+                    GetValueForLog(kv.Key, kv.Value));
                 changes = true;
             }
         }
@@ -154,6 +192,19 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     /// </summary>
     /// <param name="value">The value to conditionally redact.</param>
     /// <returns>The original value or "***" if redaction is enabled.</returns>
-    private string? GetValueForLog(string? value) =>
-        _options.RedactConfigurationValues ? RedactedValue : value;
+    private string? GetValueForLog(string key, string? value) =>
+        _options.RedactConfigurationValues || IsSensitiveKey(key) ? RedactedValue : value;
+
+    private static bool IsSensitiveKey(string key)
+    {
+        foreach (var token in SensitiveKeyTokens)
+        {
+            if (key.Contains(token, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

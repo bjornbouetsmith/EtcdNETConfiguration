@@ -40,9 +40,11 @@ public record EtcdOptions
     /// <summary>
     /// Gets or sets the root key prefix from which etcd configuration will be loaded.
     /// All keys starting with this value are retrieved.
-    /// Defaults to "/configuration".
+    /// Defaults to "/configuration". The root key "/" is rejected because it would load
+    /// every key in etcd; use a prefix scoped to this application instead.
     /// </summary>
     [Required(ErrorMessage = "RootKey must be set to a non empty string")]
+    [CustomValidation(typeof(EtcdOptions), nameof(ValidateRootKey))]
     public string? RootKey { get; set; } = "/configuration";
 
     /// <summary>
@@ -66,13 +68,57 @@ public record EtcdOptions
 
     /// <summary>
     /// Gets or sets whether to replace sensitive configuration values with "***" in log messages.
-    /// Defaults to true for security best practices.
+    /// Defaults to true for security best practices. Values are redacted regardless of this
+    /// setting when the key name looks like a secret.
     /// </summary>
     public bool RedactConfigurationValues { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the maximum number of keys that a single etcd read may return.
+    /// Defaults to 10,000. A broad <see cref="RootKey"/> or a large etcd database
+    /// cannot exhaust memory or block shutdown indefinitely.
+    /// </summary>
+    [Range(1, int.MaxValue, ErrorMessage = "MaximumConfigurationKeyCount must be at least 1")]
+    public int MaximumConfigurationKeyCount { get; set; } = 10_000;
+
+    /// <summary>
+    /// Gets or sets the maximum combined key and value size, in bytes, that a single etcd read
+    /// may return. Defaults to 8 MiB.
+    /// </summary>
+    [Range(typeof(long), "1", "9223372036854775807",
+        ErrorMessage = "MaximumConfigurationSizeBytes must be at least 1")]
+    public long MaximumConfigurationSizeBytes { get; set; } = 8 * 1024 * 1024;
+
+    /// <summary>
+    /// Gets or sets how many consecutive permanent polling failures are tolerated before the
+    /// host is asked to stop. Defaults to 5. Set to 0 to keep polling indefinitely and only
+    /// expose the failure through <see cref="IEtcdPollerStatus"/>.
+    /// </summary>
+    [Range(0, int.MaxValue,
+        ErrorMessage = "MaximumConsecutivePermanentFailures must be zero or greater")]
+    public int MaximumConsecutivePermanentFailures { get; set; } = 5;
 
     /// <summary>
     /// Gets or sets the TLS settings used when communicating with etcd endpoints.
     /// When null or <see cref="SslOptions.UseSsl"/> is false, the connection is unencrypted.
     /// </summary>
     public SslOptions? SslOptions { get; set; }
+
+    /// <summary>
+    /// Validates that <see cref="RootKey"/> is not the etcd root. Loading the entire keyspace
+    /// is almost never intended and can expose unrelated configuration.
+    /// </summary>
+    /// <param name="rootKey">The configured root key.</param>
+    /// <returns>A validation result describing the problem, or success.</returns>
+    public static ValidationResult? ValidateRootKey(string? rootKey)
+    {
+        if (!string.IsNullOrWhiteSpace(rootKey) &&
+            string.Equals(rootKey.Trim(), "/", StringComparison.Ordinal))
+        {
+            return new ValidationResult(
+                "RootKey must be a non-root prefix; '/' would load every key in etcd.");
+        }
+
+        return ValidationResult.Success;
+    }
 }

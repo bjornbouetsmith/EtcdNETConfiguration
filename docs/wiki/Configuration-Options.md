@@ -28,10 +28,13 @@ builder.AddEtcdConfiguration(options =>
 | Option | Default | Validation |
 |-|-|-|
 | `EndPoints` | `http://127.0.0.1:2379` | Required; comma-separated absolute `http://` or `https://` URLs. The scheme must match `UseSsl`; mixed schemes fail. |
-| `RootKey` | `/configuration` | Required; must be a non-empty string. |
+| `RootKey` | `/configuration` | Required; must be a non-empty string and must not be `/`. |
 | `RefreshInterval` | 1 minute | Must be between `TimeSpan.Zero` and 24 hours, inclusive. `TimeSpan.Zero` disables background polling. |
 | `ConfigurationTimeout` | 1 second | Must be between 1 second and 60 seconds, inclusive. |
-| `RedactConfigurationValues` | `true` | No validation. Keep `true` in production. |
+| `RedactConfigurationValues` | `true` | No validation. Keep `true` in production. Secret-like keys are redacted even when this is `false`. |
+| `MaximumConfigurationKeyCount` | 10,000 | At least 1. A read that returns more keys fails. |
+| `MaximumConfigurationSizeBytes` | 8 MiB (8,388,608) | At least 1. A read whose combined key and value size exceeds this fails. |
+| `MaximumConsecutivePermanentFailures` | 5 | Zero or greater. After this many consecutive permanent poll failures the host is asked to stop. `0` keeps polling and only updates `IEtcdPollerStatus`. |
 | `SslOptions` | `null` | Null means plaintext, but only when every endpoint is `http://`. |
 | `SslOptions.UseSsl` | `false` | The real TLS switch. The endpoint scheme alone does not enable TLS. |
 | `SslOptions.ServerCertificateAuthorityPath` | `null` | Path to a PEM CA. The file must exist and load as a certificate. |
@@ -40,6 +43,7 @@ builder.AddEtcdConfiguration(options =>
 | `SslOptions.ClientCertificateKeyPath` | `null` | PEM private key. Requires `ClientCertificatePath`; must exist and match the certificate. |
 | `SslOptions.ClientCertificatePassword` | `null` | Password for a PKCS#12 file or encrypted PEM key. Requires `ClientCertificatePath`. Never logged or included in exceptions. |
 | `SslOptions.RevocationMode` | `NoCheck` | Revocation mode used for the etcd server certificate chain. |
+| `SslOptions.UseProxy` | `false` | Whether the gRPC HTTP handler uses the system proxy. |
 
 ## Endpoints
 
@@ -64,6 +68,10 @@ See [TLS](TLS) and [Mutual TLS](Mutual-TLS).
 ```csharp
 options.RootKey = "/myroot";
 ```
+
+The root key `/` is rejected because it would load every key in etcd. Use a prefix scoped to this application. mTLS and TLS authenticate the client, but etcd RBAC still decides which keys the client may read, so scope the etcd role to the same prefix and grant only the permissions the application needs.
+
+A single read is limited by `MaximumConfigurationKeyCount` and `MaximumConfigurationSizeBytes`. If the limit is exceeded, the load fails rather than allocating an unbounded dictionary.
 
 Keys use `:` as the configuration hierarchy separator:
 
@@ -101,7 +109,7 @@ Limits individual etcd calls:
 Configuration key /myroot:password was added with value ***
 ```
 
-Keep redaction enabled in production so configuration values are not written to logs.
+Keep redaction enabled in production so configuration values are not written to logs. When `RedactConfigurationValues` is `false`, the library logs a startup warning and still redacts keys whose names look like secrets (`password`, `pwd`, `secret`, `token`, `credential`, `connectionstring`, `apikey`, `privatekey`).
 
 ## Related pages
 

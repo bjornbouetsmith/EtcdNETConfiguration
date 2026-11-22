@@ -190,9 +190,13 @@ public abstract class IntegrationTestBase
 
         var process = Process.Start(processInfo) ?? throw new InvalidOperationException("could not create docker compose command line - please check logs");
 
-        var result = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var err = await process.StandardError.ReadToEndAsync(cancellationToken);
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        var output = await Task.WhenAll(standardOutputTask, standardErrorTask);
         await process.WaitForExitAsync(cancellationToken);
+
+        var result = output[0];
+        var err = output[1];
 
         Trace.WriteLine("ETCD is up");
         Trace.WriteLine(result);

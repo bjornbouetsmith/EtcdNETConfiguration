@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace ROOT.Etcd.ConfigurationTest;
 
@@ -11,7 +12,8 @@ namespace ROOT.Etcd.ConfigurationTest;
 /// </summary>
 public static class TestCertificates
 {
-    private const string DefaultDockerImage = "alpine:3.20";
+    private const string DefaultDockerImage =
+        "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc";
     private const string GenerateScript = "generate-certs.sh";
 
     private static readonly TimeSpan MaximumCertificateAge = TimeSpan.FromDays(1);
@@ -192,9 +194,13 @@ public static class TestCertificates
             ?? throw new InvalidOperationException(
                 $"Could not start the TLS certificate generator ({description}).");
 
-        var standardOutput = process.StandardOutput.ReadToEnd();
-        var standardError = process.StandardError.ReadToEnd();
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync();
+        var standardErrorTask = process.StandardError.ReadToEndAsync();
+        Task.WhenAll(standardOutputTask, standardErrorTask).GetAwaiter().GetResult();
         process.WaitForExit();
+
+        var standardOutput = standardOutputTask.Result;
+        var standardError = standardErrorTask.Result;
 
         if (process.ExitCode != 0)
         {

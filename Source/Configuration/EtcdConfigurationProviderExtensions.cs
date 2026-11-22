@@ -1,6 +1,7 @@
 ﻿using dotnet_etcd.DependencyInjection;
 using dotnet_etcd.interfaces;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -22,12 +23,14 @@ public static class EtcdConfigurationProviderExtensions
     /// <param name="configureSource">Optional action to customize etcd options before validation (e.g., set endpoints or timeout).</param>
     /// <param name="etcdClientFactory">Optional client factory; defaults to <see cref="EtcdClientFactory"/> if not provided.</param>
     /// <param name="timeProvider">Optional time provider; uses system time if null.</param>
+    /// <param name="loggerFactory">Optional logger factory for the initial configuration load, which runs before dependency injection is available.</param>
     /// <returns>The same host builder with etcd configuration added.</returns>
     public static IHostBuilder AddEtcdConfiguration(
         this IHostBuilder hostBuilder,
         Action<EtcdOptions>? configureSource = null,
         IEtcdClientFactory? etcdClientFactory = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ILoggerFactory? loggerFactory = null)
     {
         var etcdConfiguration = new EtcdConfiguration();
 
@@ -51,17 +54,34 @@ public static class EtcdConfigurationProviderExtensions
                     serviceProvider.GetRequiredService<ILogger<EtcdConfigurationLoader>>(),
                     timeProvider: serviceProvider.GetRequiredService<TimeProvider>(),
                     etcdConfiguration.Configuration));
-            services.AddHostedService<EtcdPoller>();
+            services.AddSingleton<EtcdPoller>();
+            services.AddSingleton<IEtcdPollerStatus>(serviceProvider =>
+                serviceProvider.GetRequiredService<EtcdPoller>());
+            services.AddHostedService(serviceProvider =>
+                serviceProvider.GetRequiredService<EtcdPoller>());
+
+            // Use the caller-supplied factory for the DI-registered client as well as the
+            // initial source so both paths share exactly the same connection behaviour.
+            // TryAdd preserves a pre-existing plaintext registration for callers that
+            // intentionally provide their own client; TLS configurations fail earlier.
+            services.TryAddSingleton<IEtcdClient>(serviceProvider =>
+                clientFactory.CreateClient(serviceProvider.GetRequiredService<EtcdOptions>()));
 
             services.AddEtcdClient((serviceProvider, clientOptions) =>
                 ConfigureEtcdClient(serviceProvider.GetRequiredService<EtcdOptions>(), clientOptions));
         });
 
-        hostBuilder.ConfigureHostConfiguration(config =>
+        hostBuilder.ConfigureAppConfiguration((_, config) =>
         {
             // This source loads the initial values synchronously and seeds the shared
             // EtcdConfiguration used by both IConfiguration and the background poller.
-            config.Add(new EtcdConfigurationSource(etcdOptions, etcdConfiguration, clientFactory));
+            // Both host-builder overloads add the source to application configuration
+            // so precedence does not depend on which overload is used.
+            config.Add(new EtcdConfigurationSource(
+                etcdOptions,
+                etcdConfiguration,
+                clientFactory,
+                loggerFactory?.CreateLogger<EtcdConfigurationSource>()));
         });
 
         return hostBuilder;
@@ -75,12 +95,14 @@ public static class EtcdConfigurationProviderExtensions
     /// <param name="configureSource">Optional action to customize etcd options before validation (e.g., set endpoints or timeout).</param>
     /// <param name="etcdClientFactory">Optional client factory; defaults to <see cref="EtcdClientFactory"/> if not provided.</param>
     /// <param name="timeProvider">Optional time provider; uses system time if null.</param>
+    /// <param name="loggerFactory">Optional logger factory for the initial configuration load, which runs before dependency injection is available.</param>
     /// <returns>The same host builder with etcd configuration added.</returns>
     public static IHostApplicationBuilder AddEtcdConfiguration(
         this IHostApplicationBuilder hostBuilder,
         Action<EtcdOptions>? configureSource = null,
         IEtcdClientFactory? etcdClientFactory = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ILoggerFactory? loggerFactory = null)
     {
         var etcdConfiguration = new EtcdConfiguration();
 
@@ -104,14 +126,29 @@ public static class EtcdConfigurationProviderExtensions
                 timeProvider: serviceProvider.GetRequiredService<TimeProvider>(),
                 etcdConfiguration.Configuration));
 
-        hostBuilder.Services.AddHostedService<EtcdPoller>();
+        hostBuilder.Services.AddSingleton<EtcdPoller>();
+        hostBuilder.Services.AddSingleton<IEtcdPollerStatus>(serviceProvider =>
+            serviceProvider.GetRequiredService<EtcdPoller>());
+        hostBuilder.Services.AddHostedService(serviceProvider =>
+            serviceProvider.GetRequiredService<EtcdPoller>());
+
+        // Use the caller-supplied factory for the DI-registered client as well as the
+        // initial source so both paths share exactly the same connection behaviour.
+        // TryAdd preserves a pre-existing plaintext registration for callers that
+        // intentionally provide their own client; TLS configurations fail earlier.
+        hostBuilder.Services.TryAddSingleton<IEtcdClient>(serviceProvider =>
+            clientFactory.CreateClient(serviceProvider.GetRequiredService<EtcdOptions>()));
 
         hostBuilder.Services.AddEtcdClient((serviceProvider, clientOptions) =>
             ConfigureEtcdClient(serviceProvider.GetRequiredService<EtcdOptions>(), clientOptions));
 
         // This source loads the initial values synchronously and seeds the shared
         // EtcdConfiguration used by both IConfiguration and the background poller.
-        hostBuilder.Configuration.Add(new EtcdConfigurationSource(etcdOptions, etcdConfiguration, clientFactory));
+        hostBuilder.Configuration.Add(new EtcdConfigurationSource(
+            etcdOptions,
+            etcdConfiguration,
+            clientFactory,
+            loggerFactory?.CreateLogger<EtcdConfigurationSource>()));
 
         return hostBuilder;
     }
@@ -173,6 +210,9 @@ public static class EtcdConfigurationProviderExtensions
         target.RefreshInterval = source.RefreshInterval;
         target.ConfigurationTimeout = source.ConfigurationTimeout;
         target.RedactConfigurationValues = source.RedactConfigurationValues;
+        target.MaximumConfigurationKeyCount = source.MaximumConfigurationKeyCount;
+        target.MaximumConfigurationSizeBytes = source.MaximumConfigurationSizeBytes;
+        target.MaximumConsecutivePermanentFailures = source.MaximumConsecutivePermanentFailures;
         target.SslOptions = source.SslOptions is null ? null : source.SslOptions with { };
     }
 

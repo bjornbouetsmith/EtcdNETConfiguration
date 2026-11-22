@@ -103,7 +103,10 @@ public class EtcdConfigurationProviderExtensionsTest
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(IHostedService) &&
-                          descriptor.ImplementationType == typeof(EtcdPoller));
+                          descriptor.ImplementationFactory is not null);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IEtcdPollerStatus));
     }
 
     [Fact]
@@ -187,13 +190,53 @@ public class EtcdConfigurationProviderExtensionsTest
         var builder = new CapturingHostBuilder();
         builder.AddEtcdConfiguration(_ => { });
 
+        // Both host-builder overloads add the source to application configuration.
+        Assert.Null(builder.ConfigureHostConfigurationAction);
+        Assert.NotNull(builder.ConfigureAppConfigurationAction);
+
         var configurationBuilder = new ConfigurationBuilder();
-        builder.ConfigureHostConfigurationAction!(configurationBuilder);
+        builder.ConfigureAppConfigurationAction!(
+            new HostBuilderContext(new Dictionary<object, object>()),
+            configurationBuilder);
 
         // There must be only one etcd-backed provider. A separate one-time provider
         // would keep deleted keys alive as a fallback.
         var source = Assert.Single(configurationBuilder.Sources);
         Assert.IsType<EtcdConfigurationSource>(source);
+    }
+
+    [Fact]
+    public void AddEtcdConfiguration_UsesTheProvidedFactoryForTheSourceAndTheDiClient()
+    {
+        var factory = new Mock<IEtcdClientFactory>();
+        factory
+            .Setup(f => f.CreateClient(It.IsAny<EtcdOptions>()))
+            .Returns(() =>
+            {
+                var client = new Mock<IEtcdClient>();
+                client
+                    .Setup(c => c.GetRange(
+                        It.IsAny<string>(),
+                        It.IsAny<Metadata>(),
+                        It.IsAny<DateTime?>(),
+                        It.IsAny<CancellationToken>()))
+                    .Returns(new RangeResponse());
+                return client.Object;
+            });
+        var builder = new CapturingHostBuilder();
+
+        builder.AddEtcdConfiguration(_ => { }, etcdClientFactory: factory.Object);
+
+        var configurationBuilder = new ConfigurationBuilder();
+        builder.ConfigureAppConfigurationAction!(
+            new HostBuilderContext(new Dictionary<object, object>()),
+            configurationBuilder);
+        configurationBuilder.Build();
+
+        using var provider = BuildServiceProvider(builder);
+        Assert.NotNull(provider.GetRequiredService<IEtcdClient>());
+
+        factory.Verify(f => f.CreateClient(It.IsAny<EtcdOptions>()), Times.Exactly(2));
     }
 
     [Fact]
@@ -283,7 +326,10 @@ public class EtcdConfigurationProviderExtensionsTest
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(IHostedService) &&
-                          descriptor.ImplementationType == typeof(EtcdPoller));
+                          descriptor.ImplementationFactory is not null);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IEtcdPollerStatus));
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(IValidateOptions<EtcdOptions>));
@@ -356,6 +402,9 @@ public class EtcdConfigurationProviderExtensionsTest
             builder.Services,
             descriptor => descriptor.ServiceType == typeof(IEtcdClient) &&
                           ReferenceEquals(descriptor.ImplementationInstance, existingClient));
+
+        using var provider = builder.Services.BuildServiceProvider();
+        Assert.Same(existingClient, provider.GetRequiredService<IEtcdClient>());
     }
 
     [Fact]
@@ -444,6 +493,15 @@ public class EtcdConfigurationProviderExtensionsTest
         Assert.Contains("RefreshInterval", exception.Message);
     }
 
+    private static ServiceProvider BuildServiceProvider(CapturingHostBuilder builder)
+    {
+        var services = new ServiceCollection();
+        builder.ConfigureServicesAction!(
+            new HostBuilderContext(new Dictionary<object, object>()),
+            services);
+        return services.BuildServiceProvider();
+    }
+
     private static IEtcdClientFactory CreateEmptyClientFactory()
     {
         var client = new Mock<IEtcdClient>();
@@ -492,6 +550,8 @@ public class EtcdConfigurationProviderExtensionsTest
 
         public Action<IConfigurationBuilder>? ConfigureHostConfigurationAction { get; private set; }
 
+        public Action<HostBuilderContext, IConfigurationBuilder>? ConfigureAppConfigurationAction { get; private set; }
+
         public IHostBuilder ConfigureHostConfiguration(Action<IConfigurationBuilder> configureDelegate)
         {
             ConfigureHostConfigurationAction += configureDelegate;
@@ -499,7 +559,11 @@ public class EtcdConfigurationProviderExtensionsTest
         }
 
         public IHostBuilder ConfigureAppConfiguration(
-            Action<HostBuilderContext, IConfigurationBuilder> configureDelegate) => this;
+            Action<HostBuilderContext, IConfigurationBuilder> configureDelegate)
+        {
+            ConfigureAppConfigurationAction += configureDelegate;
+            return this;
+        }
 
         public IHostBuilder ConfigureServices(
             Action<HostBuilderContext, IServiceCollection> configureDelegate)

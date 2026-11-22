@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading;
 
 namespace ROOT.Etcd.Configuration;
@@ -45,14 +46,17 @@ public interface IEtcdConfigurationUpdater
 /// </summary>
 public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
 {
-    private Dictionary<string, string?>? _currentValues;
+    private static readonly IReadOnlyDictionary<string, string?> EmptyConfiguration =
+        new ReadOnlyDictionary<string, string?>(new Dictionary<string, string?>());
+
+    private IReadOnlyDictionary<string, string?>? _currentValues;
     
     /// <inheritdoc/>
     public event ConfigurationChangedDelegate? ConfigurationChanged;
 
     /// <inheritdoc/>
     public IReadOnlyDictionary<string, string?> Configuration =>
-        Volatile.Read(ref _currentValues) ?? [];
+        Volatile.Read(ref _currentValues) ?? EmptyConfiguration;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EtcdConfiguration"/> class with no initial values.
@@ -67,7 +71,8 @@ public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
     /// <param name="initialValues">Read-only dictionary of initial key-value pairs for the configuration.</param>
     internal EtcdConfiguration(IReadOnlyDictionary<string, string?> initialValues) 
     {
-        _currentValues = new Dictionary<string,string?>(initialValues);
+        _currentValues = new ReadOnlyDictionary<string, string?>(
+            new Dictionary<string, string?>(initialValues));
     }
 
     /// <inheritdoc/>
@@ -79,8 +84,11 @@ public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
             newData[change.Key] = change.Value;
         }
 
-        Interlocked.Exchange(ref _currentValues, newData);
+        IReadOnlyDictionary<string, string?> publishedData =
+            new ReadOnlyDictionary<string, string?>(newData);
+
+        Interlocked.Exchange(ref _currentValues, publishedData);
         var handler = ConfigurationChanged;
-        handler?.Invoke(newData);
+        handler?.Invoke(publishedData);
     }
 }
