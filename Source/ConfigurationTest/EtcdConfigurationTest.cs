@@ -44,6 +44,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
         builder.AddEtcdConfiguration(options =>
         {
             options.EndPoints = _etcdServer;
+            options.RefreshInterval = TimeSpan.Zero;
         });
         builder.ConfigureServices((ctx, services) =>
         {
@@ -87,6 +88,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
         builder.AddEtcdConfiguration(options =>
         {
             options.EndPoints = _etcdServer;
+            options.RefreshInterval = TimeSpan.Zero;
         });
 
         
@@ -196,7 +198,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
             {
                 options.EndPoints = _etcdServer;
                 options.RootKey = rootKey;
-                options.RefreshInterval = TimeSpan.FromMilliseconds(100);
+                options.RefreshInterval = TimeSpan.Zero;
             });
                         
             builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(rootKey));
