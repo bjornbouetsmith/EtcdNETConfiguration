@@ -190,7 +190,7 @@ public class EtcdConfigurationUnitTest
         var snapshot = configuration.Configuration;
 
         Assert.False(snapshot is Dictionary<string, string?>);
-        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string?>>(snapshot);
+        var dictionary = Assert.IsType<IDictionary<string, string?>>(snapshot, false);
         Assert.Throws<NotSupportedException>(() => dictionary["/configuration:one"] = "changed");
         Assert.Equal("value-one", configuration.Configuration["/configuration:one"]);
     }
@@ -208,7 +208,7 @@ public class EtcdConfigurationUnitTest
         });
 
         Assert.NotNull(changes);
-        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string?>>(changes);
+        var dictionary = Assert.IsType<IDictionary<string, string?>>(changes, false);
         Assert.Throws<NotSupportedException>(() => dictionary["/configuration:one"] = "changed");
     }
 

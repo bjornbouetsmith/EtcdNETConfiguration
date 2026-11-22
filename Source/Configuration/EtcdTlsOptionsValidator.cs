@@ -36,38 +36,16 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
         ArgumentNullException.ThrowIfNull(options);
 
         var failures = new List<string>();
-        var sslOptions = options.SslOptions;
+        var sslOptions = options.SslOptions ?? new SslOptions();
         var endpoints = ParseEndpoints(options.EndPoints, failures);
-        var useSsl = sslOptions?.UseSsl == true;
-        var hasTlsSettings = sslOptions is not null && HasAnyTlsSetting(sslOptions);
 
-        if (!string.IsNullOrWhiteSpace(options.RootKey) &&
-            string.Equals(options.RootKey.Trim(), "/", StringComparison.Ordinal))
+        var hasTlsSettings = HasAnyTlsSetting(sslOptions);
+
+        ValidateBasicSettings(options, failures, endpoints);
+
+        if (!sslOptions.UseSsl)
         {
-            failures.Add("RootKey must be a non-root prefix; '/' would load every key in etcd.");
-        }
-
-        if (endpoints.Count > 1 &&
-            endpoints.Select(endpoint => endpoint.Scheme).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
-        {
-            failures.Add("All etcd endpoints must use the same URI scheme; mixed http:// and https:// endpoints are not supported.");
-        }
-
-        if (!useSsl)
-        {
-            if (hasTlsSettings)
-            {
-                failures.Add("TLS settings are configured but SslOptions.UseSsl is false. Set UseSsl to true or remove the TLS settings; the library will not silently fall back to plaintext.");
-            }
-
-            foreach (var endpoint in endpoints)
-            {
-                if (IsHttps(endpoint))
-                {
-                    failures.Add($"The etcd endpoint '{endpoint}' uses https:// but SslOptions.UseSsl is false.");
-                }
-            }
-
+            ValidateNonSsl(hasTlsSettings, failures, endpoints);
             return failures;
         }
 
@@ -79,8 +57,39 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
             }
         }
 
-        ValidateSslSettings(sslOptions!, failures);
+        ValidateSslSettings(sslOptions, failures);
         return failures;
+    }
+
+    private static void ValidateBasicSettings(EtcdOptions options, List<string> failures, List<Uri> endpoints)
+    {
+        if (!string.IsNullOrWhiteSpace(options.RootKey) &&
+            string.Equals(options.RootKey.Trim(), "/", StringComparison.Ordinal))
+        {
+            failures.Add("RootKey must be a non-root prefix; '/' would load every key in etcd.");
+        }
+
+        if (endpoints.Count > 1 &&
+            endpoints.Select(endpoint => endpoint.Scheme).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+        {
+            failures.Add("All etcd endpoints must use the same URI scheme; mixed http:// and https:// endpoints are not supported.");
+        }
+    }
+
+    private static void ValidateNonSsl(bool hasTlsSettings, List<string> failures, List<Uri> endpoints)
+    {
+        if (hasTlsSettings)
+        {
+            failures.Add("TLS settings are configured but SslOptions.UseSsl is false. Set UseSsl to true or remove the TLS settings; the library will not silently fall back to plaintext.");
+        }
+
+        foreach (var endpoint in endpoints)
+        {
+            if (IsHttps(endpoint))
+            {
+                failures.Add($"The etcd endpoint '{endpoint}' uses https:// but SslOptions.UseSsl is false.");
+            }
+        }
     }
 
     /// <summary>
