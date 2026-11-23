@@ -27,6 +27,39 @@ public class EtcdConfigurationProviderTest
     }
 
     [Fact]
+    public void Load_IsCaseInsensitive()
+    {
+        var configuration = new TestEtcdConfiguration
+        {
+            Configuration = new Dictionary<string, string?>
+            {
+                ["/configuration:Database:Host"] = "localhost"
+            }
+        };
+        var provider = new EtcdConfigurationProvider(configuration);
+
+        provider.Load();
+
+        Assert.True(provider.TryGet("/CONFIGURATION:database:host", out var value));
+        Assert.Equal("localhost", value);
+    }
+
+    [Fact]
+    public void ConfigurationChanged_IsCaseInsensitive()
+    {
+        var configuration = new TestEtcdConfiguration();
+        var provider = new EtcdConfigurationProvider(configuration);
+
+        configuration.Publish(new Dictionary<string, string?>
+        {
+            ["/configuration:Database:Host"] = "localhost"
+        });
+
+        Assert.True(provider.TryGet("/CONFIGURATION:database:host", out var value));
+        Assert.Equal("localhost", value);
+    }
+
+    [Fact]
     public void Load_CopiesTheConfigurationInsteadOfKeepingAReference()
     {
         var data = new Dictionary<string, string?>

@@ -63,10 +63,10 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
 
     private static void ValidateBasicSettings(EtcdOptions options, List<string> failures, List<Uri> endpoints)
     {
-        if (!string.IsNullOrWhiteSpace(options.RootKey) &&
-            string.Equals(options.RootKey.Trim(), "/", StringComparison.Ordinal))
+        var rootKeyValidation = EtcdOptions.ValidateRootKey(options.RootKey);
+        if (rootKeyValidation?.ErrorMessage is { } rootKeyError)
         {
-            failures.Add("RootKey must be a non-root prefix; '/' would load every key in etcd.");
+            failures.Add(rootKeyError);
         }
 
         if (endpoints.Count > 1 &&

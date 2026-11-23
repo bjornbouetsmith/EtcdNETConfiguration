@@ -30,8 +30,8 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         using (var client = CreateClient())
         {
-            await client.PutAsync("/configuration:Kafka:BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
-            await client.PutAsync("/configuration:Kafka:BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
+            await client.PutAsync("/configuration/Kafka/BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
+            await client.PutAsync("/configuration/Kafka/BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
         }
         var builder = Host.CreateDefaultBuilder();
         builder.ConfigureLogging(logging =>
@@ -77,8 +77,8 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         using (var client = CreateClient())
         {
-            await client.PutAsync("/configuration:Kafka:BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
-            await client.PutAsync("/configuration:Kafka:BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
+            await client.PutAsync("/configuration/Kafka/BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
+            await client.PutAsync("/configuration/Kafka/BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
         }
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
@@ -121,11 +121,11 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         var rootKey = $"/review-{Guid.NewGuid():N}";
         using var client = CreateClient();
-        await client.PutAsync($"{rootKey}:one", "value-one", cancellationToken: TestContext.Current.CancellationToken);
-        await client.PutAsync($"{rootKey}:two", "value-two", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/one", "value-one", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/two", "value-two", cancellationToken: TestContext.Current.CancellationToken);
 
-        var range1 = await client.GetAsync($"{rootKey}:one", cancellationToken: TestContext.Current.CancellationToken);
-        var range2 = await client.GetAsync($"{rootKey}:two", cancellationToken: TestContext.Current.CancellationToken);
+        var range1 = await client.GetAsync($"{rootKey}/one", cancellationToken: TestContext.Current.CancellationToken);
+        var range2 = await client.GetAsync($"{rootKey}/two", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Single(range1.Kvs);
         Assert.Single(range2.Kvs);
         try
@@ -157,7 +157,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
             var configuration = host.Services.GetRequiredService<IConfiguration>();
             Assert.Equal("value-one", configuration[$"{rootKey}:one"]);
 
-            await client.DeleteAsync($"{rootKey}:one", cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteAsync($"{rootKey}/one", cancellationToken: TestContext.Current.CancellationToken);
             await TestWait.UntilAsync(
                 () => configuration[$"{rootKey}:one"] is null,
                 "Expected the deleted key to disappear from configuration.");
@@ -182,10 +182,10 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
         using var client = CreateClient();
         
-        await client.PutAsync($"{rootKey}:Kafka:BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
-        await client.PutAsync($"{rootKey}:Kafka:BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
-        await client.PutAsync($"{rootKey}:Kafka:Nested:Value", "NestedValue", cancellationToken: TestContext.Current.CancellationToken);
-        await client.PutAsync($"{rootKey}:Kafka:Nested:DeepNested:Value", "DeepNestedValue", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/Kafka/BootStrapServers:0", "localhost", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/Kafka/BootStrapServers:1", "otherhost", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/Kafka/Nested/Value", "NestedValue", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/Kafka/Nested/DeepNested/Value", "DeepNestedValue", cancellationToken: TestContext.Current.CancellationToken);
 
         try
         {
@@ -221,6 +221,94 @@ public class EtcdConfigurationTest : IntegrationTestBase
         finally
         {
             await client.DeleteRangeAsync(rootKey, cancellationToken: TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact, Trait("Category", "Integration")]
+    public async Task NestedScalarsAndArraysBindThroughIConfiguration()
+    {
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
+        Assert.True(containerUp);
+
+        var rootKey = $"/review-{Guid.NewGuid():N}";
+
+        using var client = CreateClient();
+        await client.PutAsync($"{rootKey}/App/Name", "demo", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/App/Servers:0", "one", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{rootKey}/App/Servers:1", "two", cancellationToken: TestContext.Current.CancellationToken);
+
+        try
+        {
+            var builder = Host.CreateApplicationBuilder();
+            builder.Logging.ClearProviders();
+            builder.Logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
+
+            builder.AddEtcdConfiguration(options =>
+            {
+                options.EndPoints = _etcdServer;
+                options.RootKey = rootKey;
+                options.RefreshInterval = TimeSpan.Zero;
+            });
+
+            using var host = builder.Build();
+
+            await host.StartAsync(TestContext.Current.CancellationToken);
+
+            var configuration = host.Services.GetRequiredService<IConfiguration>();
+            Assert.Equal("demo", configuration[$"{rootKey}:App:Name"]);
+            Assert.Equal("one", configuration[$"{rootKey}:App:Servers:0"]);
+            Assert.Equal("two", configuration[$"{rootKey}:App:Servers:1"]);
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await client.DeleteRangeAsync($"{rootKey}/App/Name", cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync($"{rootKey}/App/Servers:0", cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync($"{rootKey}/App/Servers:1", cancellationToken: TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact, Trait("Category", "Integration")]
+    public async Task KeysOutsideRootKeyAreNotLoaded()
+    {
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
+        Assert.True(containerUp);
+
+        var rootKey = $"/scope-{Guid.NewGuid():N}";
+        var otherRootKey = $"{rootKey}-other";
+
+        using var client = CreateClient();
+        await client.PutAsync($"{rootKey}/included", "included-value", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{otherRootKey}/excluded", "excluded-value", cancellationToken: TestContext.Current.CancellationToken);
+
+        try
+        {
+            var builder = Host.CreateApplicationBuilder();
+            builder.Logging.ClearProviders();
+            builder.Logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
+
+            builder.AddEtcdConfiguration(options =>
+            {
+                options.EndPoints = _etcdServer;
+                options.RootKey = rootKey;
+                options.RefreshInterval = TimeSpan.Zero;
+            });
+
+            using var host = builder.Build();
+
+            await host.StartAsync(TestContext.Current.CancellationToken);
+
+            var configuration = host.Services.GetRequiredService<IConfiguration>();
+            Assert.Equal("included-value", configuration[$"{rootKey}:included"]);
+            Assert.Null(configuration[$"{otherRootKey}:excluded"]);
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await client.DeleteRangeAsync($"{rootKey}/included", cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync($"{otherRootKey}/excluded", cancellationToken: TestContext.Current.CancellationToken);
         }
     }
 

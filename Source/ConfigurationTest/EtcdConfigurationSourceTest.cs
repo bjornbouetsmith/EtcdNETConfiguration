@@ -32,8 +32,8 @@ public class EtcdConfigurationSourceTest
     public void Build_WithInjectedFactory_LoadsInitialConfiguration()
     {
         var client = CreateClient(CreateResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two")));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two")));
         var factory = CreateFactory(client);
         var sharedConfiguration = new EtcdConfiguration();
         var source = CreateSource(sharedConfiguration, factory.Object);
@@ -91,7 +91,7 @@ public class EtcdConfigurationSourceTest
     [Fact]
     public void Build_WithInjectedFactory_DisposesClientAfterLoading()
     {
-        var client = CreateClient(CreateResponse(("/configuration:one", "value-one")));
+        var client = CreateClient(CreateResponse(("/configuration/one", "value-one")));
         var factory = CreateFactory(client);
         var source = CreateSource(factory.Object);
 

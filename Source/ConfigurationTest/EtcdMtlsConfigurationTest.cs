@@ -32,11 +32,11 @@ public class EtcdMtlsConfigurationTest : IntegrationTestBase
         using (var client = CreateMtlsClient())
         {
             await client.PutAsync(
-                $"{rootKey}:Kafka:BootStrapServers:0",
+                $"{rootKey}/Kafka/BootStrapServers:0",
                 "mtls-host-1",
                 cancellationToken: cancellationToken);
             await client.PutAsync(
-                $"{rootKey}:Kafka:BootStrapServers:1",
+                $"{rootKey}/Kafka/BootStrapServers:1",
                 "mtls-host-2",
                 cancellationToken: cancellationToken);
         }
@@ -100,7 +100,7 @@ public class EtcdMtlsConfigurationTest : IntegrationTestBase
         using (var client = CreateMtlsClient(certificate))
         {
             await client.PutAsync(
-                $"{rootKey}:Kafka:BootStrapServers:0",
+                $"{rootKey}/Kafka/BootStrapServers:0",
                 "in-memory-host",
                 cancellationToken: cancellationToken);
         }

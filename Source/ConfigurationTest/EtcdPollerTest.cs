@@ -224,6 +224,33 @@ public class EtcdPollerTest
     }
 
     [Fact]
+    public async Task TimerCallback_WhenKeyFormatIsInvalid_TreatsFailureAsPermanent()
+    {
+        var loader = new FakeConfigurationLoader(_ =>
+            throw new EtcdConfigurationKeyFormatException("bad key"));
+        var updater = new RecordingUpdater();
+        var logger = new TestLogger<EtcdPoller>();
+        var timeProvider = CreateTimeProvider();
+        using var poller = new EtcdPoller(
+            loader,
+            updater,
+            CreateOptions(TimeSpan.FromSeconds(30)),
+            timeProvider,
+            logger);
+
+        await poller.StartAsync(CancellationToken.None);
+        timeProvider.Timer.Fire();
+
+        Assert.Equal(1, poller.ConsecutivePermanentFailures);
+        Assert.False(poller.IsHealthy);
+        Assert.Equal(0, updater.PublishCount);
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Error &&
+                     entry.Message == "Permanent error occured while polling for configuration changes");
+    }
+
+    [Fact]
     public async Task TimerCallback_AfterSuccessfulPoll_ResetsPermanentFailureCount()
     {
         var loader = new FakeConfigurationLoader(call => call == 1

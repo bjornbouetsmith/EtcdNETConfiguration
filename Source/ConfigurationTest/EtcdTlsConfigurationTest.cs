@@ -31,8 +31,8 @@ public class EtcdTlsConfigurationTest : IntegrationTestBase
         var rootKey = $"/tls-{Guid.NewGuid():N}";
 
         using var client = CreateTlsClient();
-        await client.PutAsync($"{rootKey}:Kafka:BootStrapServers:0", "tls-host-1", cancellationToken: cancellationToken);
-        await client.PutAsync($"{rootKey}:Kafka:BootStrapServers:1", "tls-host-2", cancellationToken: cancellationToken);
+        await client.PutAsync($"{rootKey}/Kafka/BootStrapServers:0", "tls-host-1", cancellationToken: cancellationToken);
+        await client.PutAsync($"{rootKey}/Kafka/BootStrapServers:1", "tls-host-2", cancellationToken: cancellationToken);
 
         var builder = Host.CreateDefaultBuilder();
         builder.ConfigureLogging(logging =>
@@ -64,7 +64,7 @@ public class EtcdTlsConfigurationTest : IntegrationTestBase
 
             // Read the values back through the client too, proving the TLS channel
             // can perform both writes and reads when SSL is enabled.
-            var range = await client.GetAsync($"{rootKey}:Kafka:BootStrapServers:0", cancellationToken: cancellationToken);
+            var range = await client.GetAsync($"{rootKey}/Kafka/BootStrapServers:0", cancellationToken: cancellationToken);
             var stored = Assert.Single(range.Kvs);
             Assert.Equal("tls-host-1", stored.Value.ToStringUtf8());
 

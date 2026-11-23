@@ -46,8 +46,8 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_ReturnsAllKeyValuePairs()
     {
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
 
         var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
@@ -58,10 +58,201 @@ public class EtcdConfigurationLoaderTest
     }
 
     [Fact]
+    public void LoadConfiguration_MapsNestedPathsToConfigurationKeys()
+    {
+        EnqueueResponse(
+            ("/configuration/database/host", "localhost"),
+            ("/configuration/database/port", "5432"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal("localhost", result.Configuration["/configuration:database:host"]);
+        Assert.Equal("5432", result.Configuration["/configuration:database:port"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_MapsCollectionIndices()
+    {
+        EnqueueResponse(
+            ("/configuration/connectionstrings:0", "first"),
+            ("/configuration/connectionstrings:1", "second"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal("first", result.Configuration["/configuration:connectionstrings:0"]);
+        Assert.Equal("second", result.Configuration["/configuration:connectionstrings:1"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_MapsNestedCollections()
+    {
+        EnqueueResponse(("/configuration/services:0/endpoints:1", "endpoint"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal("endpoint", result.Configuration["/configuration:services:0:endpoints:1"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_MapsDeepNesting()
+    {
+        EnqueueResponse(("/configuration/key/subkey/deepkey", "value"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal("value", result.Configuration["/configuration:key:subkey:deepkey"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_SkipsOutOfScopeKeys()
+    {
+        EnqueueResponse(
+            ("/configuration/key", "value"),
+            ("/configuration-other/key", "other"),
+            ("/configurations/key", "other"),
+            ("/configuration", "root"),
+            ("/configuration-other:key", "other"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        var value = Assert.Single(result.Configuration);
+        Assert.Equal("/configuration:key", value.Key);
+        Assert.Equal("value", value.Value);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenKeyUsesOldFormat_ThrowsMigrationError()
+    {
+        EnqueueResponse(("/configuration:key", "value"));
+
+        var exception = Assert.Throws<EtcdConfigurationKeyFormatException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("removed ':' hierarchy format", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("/configuration/key", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/configuration/key:foo")]
+    [InlineData("/configuration/key:")]
+    [InlineData("/configuration/key::0")]
+    [InlineData("/configuration/key:-1")]
+    [InlineData("/configuration/key:+1")]
+    [InlineData("/configuration/key:01")]
+    [InlineData("/configuration/key:1.0")]
+    public void LoadConfiguration_WhenKeyUsesInvalidColon_ThrowsFormatError(string etcdKey)
+    {
+        EnqueueResponse((etcdKey, "value"));
+
+        var exception = Assert.Throws<EtcdConfigurationKeyFormatException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("invalid path segment", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/configuration//key")]
+    [InlineData("/configuration/key/")]
+    public void LoadConfiguration_WhenKeyHasEmptySegment_ThrowsFormatError(string etcdKey)
+    {
+        EnqueueResponse((etcdKey, "value"));
+
+        var exception = Assert.Throws<EtcdConfigurationKeyFormatException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("empty path segment", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenKeysDifferOnlyByCase_ThrowsCollision()
+    {
+        EnqueueResponse(
+            ("/configuration/Key", "first"),
+            ("/configuration/key", "second"));
+
+        var exception = Assert.Throws<EtcdConfigurationKeyCollisionException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("/configuration/Key", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("/configuration/key", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("/configuration:key", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenKeysMapToTheSameStructure_ThrowsCollision()
+    {
+        EnqueueResponse(
+            ("/configuration/key:0", "first"),
+            ("/configuration/key/0", "second"));
+
+        var exception = Assert.Throws<EtcdConfigurationKeyCollisionException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("/configuration:key:0", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenOutOfScopeKeyWouldCollide_DoesNotThrow()
+    {
+        EnqueueResponse(
+            ("/configuration/key", "value"),
+            ("/configuration-other/key", "other"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal("value", result.Configuration["/configuration:key"]);
+        Assert.Single(result.Configuration);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenOnlyCaseChanges_ReportsNoChanges()
+    {
+        EnqueueResponse(("/configuration/key", "value"));
+        EnqueueResponse(("/configuration/KEY", "value"));
+
+        var loader = CreateLoader();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        _logger.Clear();
+
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.False(result.ChangesPresent);
+        Assert.Empty(_logger.Entries);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenOnlyCaseChanges_DoesNotReportRemoveAndAdd()
+    {
+        EnqueueResponse(("/configuration/key", "value"));
+        EnqueueResponse(("/configuration/KEY", "value"));
+
+        var loader = CreateLoader();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        _logger.Clear();
+
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(
+            _logger.Entries,
+            entry => entry.Message.Contains("was removed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenLookupUsesDifferentCase_IsCaseInsensitive()
+    {
+        EnqueueResponse(("/configuration/Database/Host", "localhost"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal("localhost", result.Configuration["/configuration:database:host"]);
+        Assert.True(result.Configuration.ContainsKey("/CONFIGURATION:DATABASE:HOST"));
+    }
+
+    [Fact]
     public void LoadConfiguration_UsesConfiguredRootKey()
     {
         _options.RootKey = "/custom-root";
-        EnqueueResponse(("/custom-root:key", "value"));
+        EnqueueResponse(("/custom-root/key", "value"));
 
         CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
@@ -154,7 +345,7 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_DecodesUtf8KeysAndValues()
     {
-        EnqueueResponse(("/configuration:n\u00f8kkel", "verd\u00ef"));
+        EnqueueResponse(("/configuration/n\u00f8kkel", "verd\u00ef"));
 
         var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
@@ -165,8 +356,8 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_OnFirstLoad_LogsEveryKey()
     {
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
 
         var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
@@ -183,7 +374,7 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_ByDefault_RedactsValuesInLogs()
     {
-        EnqueueResponse(("/configuration:one", "value-one"));
+        EnqueueResponse(("/configuration/one", "value-one"));
         var loader = new EtcdConfigurationLoader(
             _etcdClient.Object,
             new EtcdOptions { RootKey = "/configuration" },
@@ -202,7 +393,7 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenRedactionEnabled_RedactsAddedValues()
     {
         _options.RedactConfigurationValues = true;
-        EnqueueResponse(("/configuration:one", "value-one"));
+        EnqueueResponse(("/configuration/one", "value-one"));
 
         var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
@@ -218,8 +409,8 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenRedactionEnabled_RedactsChangedValues()
     {
         _options.RedactConfigurationValues = true;
-        EnqueueResponse(("/configuration:one", "value-one"));
-        EnqueueResponse(("/configuration:one", "new-value"));
+        EnqueueResponse(("/configuration/one", "value-one"));
+        EnqueueResponse(("/configuration/one", "new-value"));
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
@@ -239,9 +430,9 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RedactConfigurationValues = true;
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
-        EnqueueResponse(("/configuration:one", "value-one"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
+        EnqueueResponse(("/configuration/one", "value-one"));
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
         _logger.Clear();
@@ -259,11 +450,11 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenNothingChanged_DoesNotLog()
     {
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
         EnqueueResponse(
-            ("/configuration:two", "value-two"),
-            ("/configuration:one", "value-one"));
+            ("/configuration/two", "value-two"),
+            ("/configuration/one", "value-one"));
 
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -278,10 +469,10 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_WhenKeyAdded_LogsOnlyAddedKey()
     {
-        EnqueueResponse(("/configuration:one", "value-one"));
+        EnqueueResponse(("/configuration/one", "value-one"));
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
 
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -301,9 +492,9 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenKeyRemoved_LogsOnlyRemovedKey()
     {
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
-        EnqueueResponse(("/configuration:one", "value-one"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
+        EnqueueResponse(("/configuration/one", "value-one"));
 
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -323,11 +514,11 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenValueChanged_LogsOnlyChangedKey()
     {
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
         EnqueueResponse(
-            ("/configuration:one", "new-value"),
-            ("/configuration:two", "value-two"));
+            ("/configuration/one", "new-value"),
+            ("/configuration/two", "value-two"));
 
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -346,8 +537,8 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_WhenValueChangesToEmptyString_LogsChange()
     {
-        EnqueueResponse(("/configuration:one", "value-one"));
-        EnqueueResponse(("/configuration:one", string.Empty));
+        EnqueueResponse(("/configuration/one", "value-one"));
+        EnqueueResponse(("/configuration/one", string.Empty));
 
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -366,13 +557,13 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenMultipleChangesOccur_LogsOnlyChanges()
     {
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"),
-            ("/configuration:three", "value-three"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"),
+            ("/configuration/three", "value-three"));
         EnqueueResponse(
-            ("/configuration:one", "new-value"),
-            ("/configuration:two", "value-two"),
-            ("/configuration:four", "value-four"));
+            ("/configuration/one", "new-value"),
+            ("/configuration/two", "value-two"),
+            ("/configuration/four", "value-four"));
 
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -400,7 +591,7 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenPreviousLoadWasEmpty_LogsAddedKeys()
     {
         EnqueueResponse();
-        EnqueueResponse(("/configuration:one", "value-one"));
+        EnqueueResponse(("/configuration/one", "value-one"));
 
         var loader = CreateLoader();
         loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -418,8 +609,8 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_ReturnsSnapshotThatIsNotChangedByLaterLoads()
     {
-        EnqueueResponse(("/configuration:one", "value-one"));
-        EnqueueResponse(("/configuration:one", "value-two"));
+        EnqueueResponse(("/configuration/one", "value-one"));
+        EnqueueResponse(("/configuration/one", "value-two"));
 
         var loader = CreateLoader();
         var firstResult = loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -447,10 +638,25 @@ public class EtcdConfigurationLoaderTest
     {
         _options.MaximumConfigurationKeyCount = 1;
         EnqueueResponse(
-            ("/configuration:one", "value-one"),
-            ("/configuration:two", "value-two"));
+            ("/configuration/one", "value-one"),
+            ("/configuration/two", "value-two"));
 
         var exception = Assert.ThrowsAny<InvalidOperationException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("MaximumConfigurationKeyCount", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenKeyCountLimitIsExceededBySkippedKeys_Throws()
+    {
+        _options.MaximumConfigurationKeyCount = 2;
+        EnqueueResponse(
+            ("/configuration/one", "value-one"),
+            ("/configuration-other/two", "value-two"),
+            ("/configuration/three", "value-three"));
+
+        var exception = Assert.Throws<EtcdConfigurationLimitExceededException>(
             () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
 
         Assert.Contains("MaximumConfigurationKeyCount", exception.Message, StringComparison.Ordinal);
@@ -460,7 +666,7 @@ public class EtcdConfigurationLoaderTest
     public void LoadConfiguration_WhenSizeLimitIsExceeded_Throws()
     {
         _options.MaximumConfigurationSizeBytes = 5;
-        EnqueueResponse(("/configuration:one", "value-one"));
+        EnqueueResponse(("/configuration/one", "value-one"));
 
         var exception = Assert.ThrowsAny<InvalidOperationException>(
             () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
@@ -473,8 +679,8 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RedactConfigurationValues = false;
         EnqueueResponse(
-            ("/configuration:database:password", "super-secret"),
-            ("/configuration:display-name", "visible"));
+            ("/configuration/database/password", "super-secret"),
+            ("/configuration/display-name", "visible"));
 
         CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 

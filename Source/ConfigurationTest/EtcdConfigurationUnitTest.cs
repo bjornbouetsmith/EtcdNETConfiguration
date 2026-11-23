@@ -33,6 +33,20 @@ public class EtcdConfigurationUnitTest
     }
 
     [Fact]
+    public void PublishConfiguration_IsCaseInsensitive()
+    {
+        var configuration = new EtcdConfiguration();
+
+        configuration.PublishConfiguration(new Dictionary<string, string?>
+        {
+            ["/configuration:Database:Host"] = "localhost"
+        });
+
+        Assert.Equal("localhost", configuration.Configuration["/CONFIGURATION:database:host"]);
+        Assert.True(configuration.Configuration.ContainsKey("/configuration:DATABASE:HOST"));
+    }
+
+    [Fact]
     public void PublishConfiguration_RemovesKeysThatAreNotInTheNewConfiguration()
     {
         var configuration = new EtcdConfiguration();

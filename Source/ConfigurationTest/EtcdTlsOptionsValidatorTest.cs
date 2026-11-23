@@ -163,6 +163,20 @@ public class EtcdTlsOptionsValidatorTest
             failure => failure.Contains("non-root prefix", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("configuration", "RootKey must start with '/'.")]
+    [InlineData("/configuration/", "RootKey must not end with '/'.")]
+    [InlineData("/configuration//nested", "RootKey must not contain empty path segments ('//').")]
+    [InlineData("/configuration:key", "RootKey must not contain ':'; use '/' to separate etcd path segments.")]
+    public void RootKeyIsNotACanonicalPath_Fails(string rootKey, string expectedFailure)
+    {
+        var options = new EtcdOptions { RootKey = rootKey };
+
+        Assert.Contains(
+            EtcdTlsOptionsValidator.Validate(options),
+            failure => failure == expectedFailure);
+    }
+
     [Fact]
     public void CaBundleWithMultipleCertificates_Succeeds()
     {

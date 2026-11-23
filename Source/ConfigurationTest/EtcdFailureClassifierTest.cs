@@ -19,6 +19,20 @@ public class EtcdFailureClassifierTest
         Assert.True(EtcdFailureClassifier.IsPermanent(exception));
     }
 
+    [Fact]
+    public void IsPermanent_WhenKeyFormatIsInvalid_ReturnsTrue()
+    {
+        Assert.True(EtcdFailureClassifier.IsPermanent(
+            new EtcdConfigurationKeyFormatException("invalid key")));
+    }
+
+    [Fact]
+    public void IsPermanent_WhenKeysCollide_ReturnsTrue()
+    {
+        Assert.True(EtcdFailureClassifier.IsPermanent(
+            new EtcdConfigurationKeyCollisionException("collision")));
+    }
+
     [Theory]
     [InlineData(StatusCode.Unauthenticated)]
     [InlineData(StatusCode.PermissionDenied)]

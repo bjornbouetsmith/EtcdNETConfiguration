@@ -144,6 +144,28 @@ public class EtcdOptionsTest
         Assert.Empty(Validate(options));
     }
 
+    [Fact]
+    public void Validation_WhenRootKeyHasSurroundingWhitespace_DoesNotReturnErrors()
+    {
+        var options = new EtcdOptions { RootKey = " /configuration " };
+
+        Assert.Empty(Validate(options));
+    }
+
+    [Theory]
+    [InlineData("configuration", "RootKey must start with '/'.")]
+    [InlineData("/configuration/", "RootKey must not end with '/'.")]
+    [InlineData("/configuration//nested", "RootKey must not contain empty path segments ('//').")]
+    [InlineData("/configuration:key", "RootKey must not contain ':'; use '/' to separate etcd path segments.")]
+    public void Validation_WhenRootKeyIsNotACanonicalPath_ReturnsError(string rootKey, string expectedError)
+    {
+        var options = new EtcdOptions { RootKey = rootKey };
+
+        var errors = Validate(options);
+
+        Assert.Contains(errors, error => error.ErrorMessage == expectedError);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

@@ -29,7 +29,12 @@ public sealed class EtcdConfigurationProvider : ConfigurationProvider, IDisposab
     /// <param name="changes">Read-only dictionary of changed key-value pairs.</param>
     private void ConfigurationChanged(IReadOnlyDictionary<string, string?> changes)
     {
-        var data = new Dictionary<string, string?>(changes);
+        var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var change in changes)
+        {
+            data[change.Key] = change.Value;
+        }
+
         lock (_configurationLoadLock)
         {
             Data = data;
@@ -40,7 +45,12 @@ public sealed class EtcdConfigurationProvider : ConfigurationProvider, IDisposab
     /// <inheritdoc/>
     public override void Load()
     {
-        var data = new Dictionary<string,string?>(_etcdConfiguration.Configuration);
+        var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in _etcdConfiguration.Configuration)
+        {
+            data[kv.Key] = kv.Value;
+        }
+
         lock (_configurationLoadLock)
         {
             Data = data;
