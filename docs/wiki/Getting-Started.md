@@ -64,32 +64,30 @@ If the initial load fails, the host does not start with empty configuration. See
 
 ## Store configuration in etcd
 
-The `RootKey` option defines the etcd key prefix. Everything under that prefix is loaded into `IConfiguration`.
+The `RootKey` option defines the etcd key prefix. Only strict descendants of that prefix are loaded into `IConfiguration`, so `/myroot-other/key` is ignored when `RootKey` is `/myroot`.
 
-Use `:` as the configuration hierarchy separator. For example, with `RootKey = "/myroot"`:
+etcd keys use the native `/` path hierarchy. The library maps `/` to the `:` separator used by `IConfiguration`. With `RootKey = "/myroot"`:
 
-| Key | Value |
-|-|-|
-| `/myroot:connectionstrings:0` | `databaserver1` |
-| `/myroot:connectionstrings:1` | `databaserver2` |
-| `/myroot:logging:loglevel:default` | `Information` |
+| etcd key | IConfiguration key | Value |
+|-|-|-|
+| `/myroot/connectionstrings:0` | `/myroot:connectionstrings:0` | `databaserver1` |
+| `/myroot/connectionstrings:1` | `/myroot:connectionstrings:1` | `databaserver2` |
+| `/myroot/logging/loglevel/default` | `/myroot:logging:loglevel:default` | `Information` |
+| `/myroot/services:0/name` | `/myroot:services:0:name` | `api` |
 
-These keys become the following configuration entries:
-
-```text
-/myroot:connectionstrings:0 = databaserver1
-/myroot:connectionstrings:1 = databaserver2
-/myroot:logging:loglevel:default = Information
-```
+Collection indices stay attached to their segment with `:`. Do not use `:` as a hierarchy separator. Empty segments, `//`, and trailing `/` are rejected.
 
 The `RootKey` prefix is not stripped from the configuration keys. Use `GetSection("/myroot")` to bind the values under that prefix.
 
 You can add the keys with any etcd client. For example, using `etcdctl`:
 
 ```bash
-etcdctl put "/myroot:connectionstrings:0" "databaserver1"
-etcdctl put "/myroot:connectionstrings:1" "databaserver2"
+etcdctl put "/myroot/connectionstrings:0" "databaserver1"
+etcdctl put "/myroot/connectionstrings:1" "databaserver2"
+etcdctl put "/myroot/logging/loglevel/default" "Information"
 ```
+
+The old `:`-hierarchy format is no longer supported. A key such as `/myroot:connectionstrings:0` fails the load with a migration error; rewrite it as `/myroot/connectionstrings:0` before upgrading. See [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity) for the full rules and migration steps.
 
 ## Bind to a strongly typed class
 
@@ -137,6 +135,7 @@ When the host starts:
 ## Next steps
 
 - [Configuration Options](Configuration-Options) — every option, default, and validation rule.
+- [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity) — how etcd keys map to configuration keys.
 - [Validation and Startup](Validation-and-Startup) — fail-closed behavior and registration ordering.
 - [TLS](TLS) and [Mutual TLS](Mutual-TLS) — secure connections to etcd.
 - [Refresh and Polling](Refresh-and-Polling) — how live updates work.

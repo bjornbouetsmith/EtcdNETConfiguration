@@ -46,13 +46,14 @@ Because polling is disabled, changes made in etcd after startup will not be refl
 
 ## Change detection
 
-`EtcdConfigurationLoader` keeps the previous snapshot and compares it with each new read:
+`EtcdConfigurationLoader` keeps the previous snapshot and compares it with each new read. Comparisons use the mapped configuration keys and are case-insensitive, matching `IConfiguration` lookups:
 
 - New keys are logged as added.
 - Changed values are logged with the previous and new value.
 - Missing keys are logged as removed.
+- A key that changes only by case, with the same value, does not count as a change.
 
-When `RedactConfigurationValues` is `true` (the default), values are replaced with `***` in the logs.
+When `RedactConfigurationValues` is `true` (the default), values are replaced with `***` in the logs. Keys in the logs are mapped configuration keys such as `/myroot:database:host`, not the raw etcd path.
 
 ## Timeouts and errors
 
@@ -63,7 +64,7 @@ A single poll is limited by `MaximumConfigurationKeyCount` (default 10,000) and 
 The poller distinguishes transient failures from permanent ones:
 
 - **Transient** failures, such as an unavailable endpoint, a deadline, or a cancelled request, are logged as errors and polling continues.
-- **Permanent** failures, such as `Unauthenticated`, `PermissionDenied`, invalid TLS material, or an invalid configuration, are also logged as errors. If `MaximumConsecutivePermanentFailures` (default 5) is reached, the poller logs a critical message and asks the host to stop. Set the option to `0` to keep polling and only expose the failure.
+- **Permanent** failures, such as `Unauthenticated`, `PermissionDenied`, invalid TLS material, malformed etcd keys, key collisions, or an invalid configuration, are also logged as errors. If `MaximumConsecutivePermanentFailures` (default 5) is reached, the poller logs a critical message and asks the host to stop. Set the option to `0` to keep polling and only expose the failure.
 
 A successful poll resets the consecutive permanent-failure count. The last failure is always available through `IEtcdPollerStatus`:
 
@@ -92,5 +93,6 @@ public class EtcdHealthCheck
 ## Related pages
 
 - [Configuration Options](Configuration-Options)
+- [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity)
 - [How It Works](How-It-Works)
 - [Troubleshooting](Troubleshooting)

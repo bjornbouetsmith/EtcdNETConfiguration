@@ -28,7 +28,7 @@ builder.AddEtcdConfiguration(options =>
 | Option | Default | Validation |
 |-|-|-|
 | `EndPoints` | `http://127.0.0.1:2379` | Required; comma-separated absolute `http://` or `https://` URLs. The scheme must match `UseSsl`; mixed schemes fail. |
-| `RootKey` | `/configuration` | Required; must be a non-empty string and must not be `/`. |
+| `RootKey` | `/configuration` | Required; must start with `/`, must not be `/` or end with `/`, and must not contain `//` or `:`. |
 | `RefreshInterval` | 1 minute | Must be between `TimeSpan.Zero` and 24 hours, inclusive. `TimeSpan.Zero` disables background polling. |
 | `ConfigurationTimeout` | 1 second | Must be between 1 second and 60 seconds, inclusive. |
 | `RedactConfigurationValues` | `true` | No validation. Keep `true` in production. Secret-like keys are redacted even when this is `false`. |
@@ -63,24 +63,33 @@ See [TLS](TLS) and [Mutual TLS](Mutual-TLS).
 
 ## Root key
 
-`RootKey` is the etcd key prefix that is loaded into configuration. All keys starting with this value are retrieved.
+`RootKey` is the etcd path prefix that is loaded into configuration. Only strict descendants of the prefix are loaded: with `RootKey = "/myroot"`, `/myroot/key` is loaded and `/myroot-other/key` is ignored. The exact key `/myroot` is not loaded; store a root-level scalar as `/myroot/value`.
 
 ```csharp
 options.RootKey = "/myroot";
 ```
 
-The root key `/` is rejected because it would load every key in etcd. Use a prefix scoped to this application. mTLS and TLS authenticate the client, but etcd RBAC still decides which keys the client may read, so scope the etcd role to the same prefix and grant only the permissions the application needs.
+`RootKey` must be a canonical etcd path:
 
-A single read is limited by `MaximumConfigurationKeyCount` and `MaximumConfigurationSizeBytes`. If the limit is exceeded, the load fails rather than allocating an unbounded dictionary.
+- It must start with `/`.
+- It must not be `/`, because that would load every key in etcd.
+- It must not end with `/`.
+- It must not contain empty segments (`//`).
+- It must not contain `:`. Use `/` to separate etcd path segments.
 
-Keys use `:` as the configuration hierarchy separator:
+Surrounding whitespace is trimmed for validation. Use a prefix scoped to this application. mTLS and TLS authenticate the client, but etcd RBAC still decides which keys the client may read, so scope the etcd role to the same prefix and grant only the permissions the application needs.
 
-| Key | Value |
-|-|-|
-| `/myroot:connectionstrings:0` | `databaserver1` |
-| `/myroot:connectionstrings:1` | `databaserver2` |
+A single read is limited by `MaximumConfigurationKeyCount` and `MaximumConfigurationSizeBytes`. If the limit is exceeded, the load fails rather than allocating an unbounded dictionary. Every key returned by etcd counts toward the limit, including keys outside the root scope and keys that are later rejected.
 
-The prefix is not stripped from the loaded configuration keys, so bind with `GetSection("/myroot")`. See [Getting Started](Getting-Started).
+etcd keys use `/` as the path hierarchy. The library maps each `/` to the `:` separator used by `IConfiguration`. Collection indices stay attached to their segment with `:`. With `RootKey = "/myroot"`:
+
+| etcd key | IConfiguration key | Value |
+|-|-|-|
+| `/myroot/connectionstrings:0` | `/myroot:connectionstrings:0` | `databaserver1` |
+| `/myroot/connectionstrings:1` | `/myroot:connectionstrings:1` | `databaserver2` |
+| `/myroot/logging/loglevel/default` | `/myroot:logging:loglevel:default` | `Information` |
+
+The prefix is not stripped from the loaded configuration keys, so bind with `GetSection("/myroot")`. See [Getting Started](Getting-Started) and [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity).
 
 ## Supported TimeSpan ranges
 
@@ -109,11 +118,12 @@ Limits individual etcd calls:
 Configuration key /myroot:password was added with value ***
 ```
 
-Keep redaction enabled in production so configuration values are not written to logs. When `RedactConfigurationValues` is `false`, the library logs a startup warning and still redacts keys whose names look like secrets (`password`, `pwd`, `secret`, `token`, `credential`, `connectionstring`, `apikey`, `privatekey`).
+The key in this log is the mapped configuration key. The etcd key would have been `/myroot/password`. Keep redaction enabled in production so configuration values are not written to logs. When `RedactConfigurationValues` is `false`, the library logs a startup warning and still redacts keys whose names look like secrets (`password`, `pwd`, `secret`, `token`, `credential`, `connectionstring`, `apikey`, `privatekey`).
 
 ## Related pages
 
 - [Validation and Startup](Validation-and-Startup)
+- [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity)
 - [TLS](TLS)
 - [Mutual TLS](Mutual-TLS)
 - [Refresh and Polling](Refresh-and-Polling)

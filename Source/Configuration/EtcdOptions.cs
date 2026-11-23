@@ -39,7 +39,9 @@ public record EtcdOptions
 
     /// <summary>
     /// Gets or sets the root key prefix from which etcd configuration will be loaded.
-    /// All keys starting with this value are retrieved.
+    /// Only strict descendants of this path are loaded; the key <c>/prefix-other/key</c> is
+    /// not in scope of <c>/prefix</c>. Use '/' to separate path segments; the prefix must
+    /// start with '/', must not be '/', and must not end with '/' or contain ':' or '//'.
     /// Defaults to "/configuration". The root key "/" is rejected because it would load
     /// every key in etcd; use a prefix scoped to this application instead.
     /// </summary>
@@ -105,18 +107,48 @@ public record EtcdOptions
     public SslOptions? SslOptions { get; set; }
 
     /// <summary>
-    /// Validates that <see cref="RootKey"/> is not the etcd root. Loading the entire keyspace
-    /// is almost never intended and can expose unrelated configuration.
+    /// Validates that <see cref="RootKey"/> is a usable etcd path prefix. Loading the entire
+    /// keyspace is almost never intended and can expose unrelated configuration, so '/' is
+    /// rejected. The prefix must also be a canonical path: it must start with '/', must not
+    /// end with '/', and must not contain empty segments or ':'.
     /// </summary>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>A validation result describing the problem, or success.</returns>
     public static ValidationResult? ValidateRootKey(string? rootKey)
     {
-        if (!string.IsNullOrWhiteSpace(rootKey) &&
-            string.Equals(rootKey.Trim(), "/", StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(rootKey))
+        {
+            // RequiredAttribute reports the missing-value error.
+            return ValidationResult.Success;
+        }
+
+        var normalized = rootKey.Trim();
+
+        if (string.Equals(normalized, "/", StringComparison.Ordinal))
         {
             return new ValidationResult(
                 "RootKey must be a non-root prefix; '/' would load every key in etcd.");
+        }
+
+        if (!normalized.StartsWith("/", StringComparison.Ordinal))
+        {
+            return new ValidationResult("RootKey must start with '/'.");
+        }
+
+        if (normalized.EndsWith("/", StringComparison.Ordinal))
+        {
+            return new ValidationResult("RootKey must not end with '/'.");
+        }
+
+        if (normalized.Contains("//", StringComparison.Ordinal))
+        {
+            return new ValidationResult("RootKey must not contain empty path segments ('//').");
+        }
+
+        if (normalized.Contains(':'))
+        {
+            return new ValidationResult(
+                "RootKey must not contain ':'; use '/' to separate etcd path segments.");
         }
 
         return ValidationResult.Success;

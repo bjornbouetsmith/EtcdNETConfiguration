@@ -27,6 +27,7 @@
     <File Path="../docs/wiki/Getting-Started.md" />
     <File Path="../docs/wiki/Home.md" />
     <File Path="../docs/wiki/How-It-Works.md" />
+    <File Path="../docs/wiki/Key-Format-and-Case-Sensitivity.md" />
     <File Path="../docs/wiki/Mutual-TLS.md" />
     <File Path="../docs/wiki/Refresh-and-Polling.md" />
     <File Path="../docs/wiki/Test-Certificates.md" />

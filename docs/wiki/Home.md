@@ -32,12 +32,12 @@ builder.AddEtcdConfiguration(options =>
 });
 ```
 
-Keys in etcd use `:` as the configuration hierarchy separator. With `RootKey` set to `/myroot`, store values like this:
+Keys in etcd use the native `/` path hierarchy. The library maps `/` to the `:` separator used by `IConfiguration`. With `RootKey` set to `/myroot`, store values like this:
 
-| Key | Value |
-|-|-|
-| `/myroot:connectionstrings:0` | `databaserver1` |
-| `/myroot:connectionstrings:1` | `databaserver2` |
+| etcd key | IConfiguration key | Value |
+|-|-|-|
+| `/myroot/connectionstrings:0` | `/myroot:connectionstrings:0` | `databaserver1` |
+| `/myroot/connectionstrings:1` | `/myroot:connectionstrings:1` | `databaserver2` |
 
 Bind the values to a strongly typed class:
 
@@ -64,6 +64,7 @@ See [Getting Started](Getting-Started) for the full walkthrough.
 | Full setup walkthrough | [Getting Started](Getting-Started) |
 | Startup lifecycle and design | [How It Works](How-It-Works) |
 | All options and defaults | [Configuration Options](Configuration-Options) |
+| Key format, validation, and case sensitivity | [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity) |
 | Validation and fail-closed startup | [Validation and Startup](Validation-and-Startup) |
 | TLS | [TLS](TLS) |
 | Mutual TLS | [Mutual TLS](Mutual-TLS) |

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 
@@ -47,7 +48,8 @@ public interface IEtcdConfigurationUpdater
 public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
 {
     private static readonly IReadOnlyDictionary<string, string?> EmptyConfiguration =
-        new ReadOnlyDictionary<string, string?>(new Dictionary<string, string?>());
+        new ReadOnlyDictionary<string, string?>(
+            new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase));
 
     private IReadOnlyDictionary<string, string?>? _currentValues;
     
@@ -71,14 +73,19 @@ public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
     /// <param name="initialValues">Read-only dictionary of initial key-value pairs for the configuration.</param>
     internal EtcdConfiguration(IReadOnlyDictionary<string, string?> initialValues) 
     {
-        _currentValues = new ReadOnlyDictionary<string, string?>(
-            new Dictionary<string, string?>(initialValues));
+        var copy = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in initialValues)
+        {
+            copy[kv.Key] = kv.Value;
+        }
+
+        _currentValues = new ReadOnlyDictionary<string, string?>(copy);
     }
 
     /// <inheritdoc/>
     public void PublishConfiguration(IReadOnlyDictionary<string, string?> configurationData)
     {
-        var newData = new Dictionary<string, string?>();
+        var newData = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var change in configurationData)
         {
             newData[change.Key] = change.Value;

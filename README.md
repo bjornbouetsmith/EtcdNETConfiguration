@@ -45,12 +45,22 @@ The library loads all keys under `RootKey` at startup and refreshes them in the 
 
 ### Store configuration in etcd
 
-Keys use `:` as the configuration hierarchy separator. With `RootKey` set to `/myroot`:
+Keys use etcd's native `/` path hierarchy. The library maps `/` to the `:` separator used by `IConfiguration`. With `RootKey` set to `/myroot`:
 
-| Key | Value |
-|-|-|
-| `/myroot:connectionstrings:0` | `databaserver1` |
-| `/myroot:connectionstrings:1` | `databaserver2` |
+| etcd key | IConfiguration key | Value |
+|-|-|-|
+| `/myroot/connectionstrings:0` | `/myroot:connectionstrings:0` | `databaserver1` |
+| `/myroot/connectionstrings:1` | `/myroot:connectionstrings:1` | `databaserver2` |
+| `/myroot/logging/loglevel/default` | `/myroot:logging:loglevel:default` | `Information` |
+
+Collection indices stay attached to their segment with `:` (`key:0`, `key:1`). `:` is not allowed anywhere else. Empty segments, `//`, and trailing `/` are rejected. Only strict descendants of `RootKey` are loaded, so `/myroot-other/key` is ignored when `RootKey` is `/myroot`.
+
+The old `:`-hierarchy key format is no longer supported. A key such as `/myroot:key` fails the load with a migration error; rewrite it as `/myroot/key` before upgrading.
+
+```bash
+etcdctl put "/myroot/connectionstrings:0" "databaserver1"
+etcdctl put "/myroot/connectionstrings:1" "databaserver2"
+```
 
 ### Bind to a strongly typed class
 
@@ -87,6 +97,7 @@ You can then depend on `IOptions<Configuration>` for the initial values, or `IOp
 | Full setup walkthrough | [Getting Started](https://github.com/bjornbouetsmith/EtcdNETConfiguration/wiki/Getting-Started) |
 | Startup lifecycle and design | [How It Works](https://github.com/bjornbouetsmith/EtcdNETConfiguration/wiki/How-It-Works) |
 | All options and defaults | [Configuration Options](https://github.com/bjornbouetsmith/EtcdNETConfiguration/wiki/Configuration-Options) |
+| Key format, validation, and case sensitivity | [Key Format and Case Sensitivity](https://github.com/bjornbouetsmith/EtcdNETConfiguration/wiki/Key-Format-and-Case-Sensitivity) |
 | Validation and fail-closed startup | [Validation and Startup](https://github.com/bjornbouetsmith/EtcdNETConfiguration/wiki/Validation-and-Startup) |
 | TLS | [TLS](https://github.com/bjornbouetsmith/EtcdNETConfiguration/wiki/TLS) |
 | Mutual TLS | [Mutual TLS](https://github.com/bjornbouetsmith/EtcdNETConfiguration/wiki/Mutual-TLS) |

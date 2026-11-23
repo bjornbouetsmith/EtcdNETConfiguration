@@ -22,6 +22,8 @@ internal static class EtcdFailureClassifier
 
         if (exception is OptionsValidationException or
             EtcdConfigurationLimitExceededException or
+            EtcdConfigurationKeyFormatException or
+            EtcdConfigurationKeyCollisionException or
             AuthenticationException or
             CryptographicException or
             UnauthorizedAccessException)
