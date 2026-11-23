@@ -130,12 +130,12 @@ public record EtcdOptions
                 "RootKey must be a non-root prefix; '/' would load every key in etcd.");
         }
 
-        if (!normalized.StartsWith("/", StringComparison.Ordinal))
+        if (!normalized.StartsWith('/'))
         {
             return new ValidationResult("RootKey must start with '/'.");
         }
 
-        if (normalized.EndsWith("/", StringComparison.Ordinal))
+        if (normalized.EndsWith('/'))
         {
             return new ValidationResult("RootKey must not end with '/'.");
         }

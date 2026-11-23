@@ -12,15 +12,15 @@ namespace ROOT.Etcd.Configuration;
 /// treats '/' as the hierarchy separator and converts it to ':', while leaving collection
 /// index suffixes such as <c>key:0</c> attached to their segment.
 /// </remarks>
-internal static class EtcdKeyMapper
+internal static partial class EtcdKeyMapper
 {
     /// <summary>
-    /// A segment is a non-colon name optionally followed by one or more canonical
+    /// Matches a path segment: a non-colon name optionally followed by one or more canonical
     /// collection indices, for example <c>key</c>, <c>key:0</c>, or <c>key:0:1</c>.
     /// </summary>
-    private static readonly Regex ValidSegmentPattern = new(
-        "^[^:]+(?::(0|[1-9][0-9]*))*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    /// <returns>The generated pattern used to validate path segments.</returns>
+    [GeneratedRegex("^[^:]+(?::(0|[1-9][0-9]*))*$", RegexOptions.CultureInvariant, 1000)]
+    private static partial Regex ValidSegmentPattern();
 
     /// <summary>
     /// Trims whitespace and normalizes the root key to a single leading '/' with no trailing '/'.
@@ -47,7 +47,7 @@ internal static class EtcdKeyMapper
     internal static bool IsInScope(string etcdKey, string? rootKey)
     {
         var normalizedRootKey = NormalizeRootKey(rootKey);
-        var prefix = normalizedRootKey.EndsWith("/", StringComparison.Ordinal)
+        var prefix = normalizedRootKey.EndsWith('/')
             ? normalizedRootKey
             : normalizedRootKey + "/";
 
@@ -116,7 +116,7 @@ internal static class EtcdKeyMapper
     /// <param name="segment">The path segment to validate.</param>
     /// <returns>True when the segment is valid; otherwise false.</returns>
     internal static bool IsValidSegment(string segment) =>
-        !string.IsNullOrEmpty(segment) && ValidSegmentPattern.IsMatch(segment);
+        !string.IsNullOrEmpty(segment) && ValidSegmentPattern().IsMatch(segment);
 }
 
 /// <summary>

@@ -126,7 +126,7 @@ public class EtcdKeyMapperTest
     {
         var exception = new EtcdConfigurationKeyCollisionException("collision");
 
-        Assert.IsAssignableFrom<InvalidOperationException>(exception);
+        Assert.IsType<InvalidOperationException>(exception, exactMatch: false);
     }
 
     [Fact]
@@ -134,6 +134,6 @@ public class EtcdKeyMapperTest
     {
         var exception = new EtcdConfigurationKeyFormatException("format");
 
-        Assert.IsAssignableFrom<InvalidOperationException>(exception);
+        Assert.IsType<InvalidOperationException>(exception, exactMatch: false);
     }
 }
