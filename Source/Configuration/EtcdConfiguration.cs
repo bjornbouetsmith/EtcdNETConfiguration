@@ -9,7 +9,7 @@ namespace ROOT.Etcd.Configuration;
 /// Delegate invoked when configuration changes occur.
 /// </summary>
 /// <param name="changes">Read-only dictionary of changed or new key-value pairs.</param>
-public delegate void ConfigurationChangedDelegate(IReadOnlyDictionary<string, string?> changes);
+public delegate void ConfigurationChangedHandler(IReadOnlyDictionary<string, string?> changes);
 
 /// <summary>
 /// Interface representing an etcd-backed configuration source.
@@ -20,7 +20,7 @@ public interface IEtcdConfiguration
     /// <summary>
     /// Event raised when the underlying configuration data has changed.
     /// </summary>
-    event ConfigurationChangedDelegate ConfigurationChanged;
+    event ConfigurationChangedHandler ConfigurationChanged;
 
     /// <summary>
     /// Gets a read-only dictionary of current configuration key-value pairs.
@@ -54,7 +54,7 @@ public class EtcdConfiguration : IEtcdConfiguration, IEtcdConfigurationUpdater
     private IReadOnlyDictionary<string, string?>? _currentValues;
     
     /// <inheritdoc/>
-    public event ConfigurationChangedDelegate? ConfigurationChanged;
+    public event ConfigurationChangedHandler? ConfigurationChanged;
 
     /// <inheritdoc/>
     public IReadOnlyDictionary<string, string?> Configuration =>
