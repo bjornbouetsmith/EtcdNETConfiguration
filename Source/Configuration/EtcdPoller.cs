@@ -45,8 +45,8 @@ public sealed class EtcdPoller : IHostedService, IEtcdPollerStatus, IDisposable,
     private readonly ILogger<EtcdPoller> _logger;
     private readonly TimeProvider _timeProvider;
     private readonly IHostApplicationLifetime? _applicationLifetime;
-    private readonly object _timerLock = new();
-    private readonly object _failureLock = new();
+    private readonly Lock _timerLock = new();
+    private readonly Lock _failureLock = new();
     private ITimer? _timer;
     private CancellationTokenSource? _pollingCancellation;
     private Exception? _lastFailure;

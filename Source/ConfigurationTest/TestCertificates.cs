@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ROOT.Etcd.ConfigurationTest;
@@ -34,7 +35,7 @@ public static class TestCertificates
         "expired-client.crt", "expired-client.key", "expired-client.csr"
     ];
 
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static bool _checked;
 
     public static string SourceDirectory { get; } = FindSourceDirectory();

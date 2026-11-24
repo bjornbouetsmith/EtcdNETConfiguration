@@ -13,7 +13,7 @@ internal sealed class TestLogger<T> : ILogger<T>
 {
     private readonly ConcurrentQueue<TestLogEntry> _entries = new();
 
-    public IReadOnlyList<TestLogEntry> Entries => _entries.ToArray();
+    public IReadOnlyList<TestLogEntry> Entries => [.. _entries];
 
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -32,8 +32,8 @@ internal sealed class TestLogger<T> : ILogger<T>
 
 internal sealed class TestTimeProvider : TimeProvider
 {
-    private readonly object _gate = new();
-    private readonly List<TestTimer> _timers = new();
+    private readonly Lock _gate = new();
+    private readonly List<TestTimer> _timers = [];
     private DateTimeOffset _utcNow;
 
     public TestTimeProvider(DateTimeOffset utcNow)
@@ -88,7 +88,7 @@ internal sealed class TestTimeProvider : TimeProvider
 
 internal sealed class TestTimer : ITimer
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly TimerCallback _callback;
     private readonly object? _state;
     private TimeSpan _dueTime;

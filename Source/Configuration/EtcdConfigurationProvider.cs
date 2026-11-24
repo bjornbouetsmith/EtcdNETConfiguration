@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using Microsoft.Extensions.Configuration;
 
 namespace ROOT.Etcd.Configuration;
@@ -11,7 +12,7 @@ namespace ROOT.Etcd.Configuration;
 public sealed class EtcdConfigurationProvider : ConfigurationProvider, IDisposable
 {
     private readonly IEtcdConfiguration _etcdConfiguration;
-    private readonly object _configurationLoadLock = new();
+    private readonly Lock _configurationLoadLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EtcdConfigurationProvider"/> class.

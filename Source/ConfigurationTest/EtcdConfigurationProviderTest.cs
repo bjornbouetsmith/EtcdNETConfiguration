@@ -162,7 +162,7 @@ public class EtcdConfigurationProviderTest
 
     private sealed class TestEtcdConfiguration : IEtcdConfiguration
     {
-        public event ConfigurationChangedDelegate? ConfigurationChanged;
+        public event ConfigurationChangedHandler? ConfigurationChanged;
 
         public IReadOnlyDictionary<string, string?> Configuration { get; set; } =
             new Dictionary<string, string?>();

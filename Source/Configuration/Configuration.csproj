@@ -13,6 +13,10 @@
     <!-- Source Link information is embedded in the portable PDBs, so ship them in the package. -->
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>10.0-Recommended</AnalysisLevel>
+  </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ROOT.Etcd.ConfigurationTest"/>
   </ItemGroup>
