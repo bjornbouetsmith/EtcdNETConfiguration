@@ -78,7 +78,8 @@ public class EtcdConfigurationProviderExtensionsTest
         {
             var resolvedOptions = provider.GetRequiredService<EtcdOptions>();
             Assert.Equal(configuredOptions!.EndPoints, resolvedOptions.EndPoints);
-            Assert.Equal(configuredOptions.RootKey, resolvedOptions.RootKey);
+            Assert.Equal(configuredOptions.RootKeys, resolvedOptions.RootKeys);
+            Assert.Equal(configuredOptions.ConfigurationPrefix, resolvedOptions.ConfigurationPrefix);
             Assert.Equal(configuredOptions.RefreshInterval, resolvedOptions.RefreshInterval);
             Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
             Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);
@@ -107,6 +108,30 @@ public class EtcdConfigurationProviderExtensionsTest
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(IEtcdPollerStatus));
+    }
+
+    [Fact]
+    public void AddEtcdConfiguration_DeepCopiesRootKeys()
+    {
+        var builder = new CapturingHostBuilder();
+        var callerRoot = new EtcdRootKey { RootKey = "/caller-root", Priority = 5 };
+        builder.AddEtcdConfiguration(options =>
+        {
+            options.RootKeys = [callerRoot];
+            options.ConfigurationPrefix = "/app";
+        });
+
+        using var provider = BuildServiceProvider(builder);
+        var resolvedOptions = provider.GetRequiredService<EtcdOptions>();
+
+        callerRoot.RootKey = "/mutated-root";
+        callerRoot.Priority = 99;
+
+        var resolvedRoot = Assert.Single(resolvedOptions.RootKeys);
+        Assert.Equal("/caller-root", resolvedRoot.RootKey);
+        Assert.Equal(5, resolvedRoot.Priority);
+        Assert.Equal("/app", resolvedOptions.ConfigurationPrefix);
+        Assert.NotSame(callerRoot, resolvedRoot);
     }
 
     [Fact]
@@ -301,7 +326,8 @@ public class EtcdConfigurationProviderExtensionsTest
         {
             var resolvedOptions = provider.GetRequiredService<EtcdOptions>();
             Assert.Equal(configuredOptions!.EndPoints, resolvedOptions.EndPoints);
-            Assert.Equal(configuredOptions.RootKey, resolvedOptions.RootKey);
+            Assert.Equal(configuredOptions.RootKeys, resolvedOptions.RootKeys);
+            Assert.Equal(configuredOptions.ConfigurationPrefix, resolvedOptions.ConfigurationPrefix);
             Assert.Equal(configuredOptions.RefreshInterval, resolvedOptions.RefreshInterval);
             Assert.Equal(configuredOptions.ConfigurationTimeout, resolvedOptions.ConfigurationTimeout);
             Assert.Equal(configuredOptions.RedactConfigurationValues, resolvedOptions.RedactConfigurationValues);

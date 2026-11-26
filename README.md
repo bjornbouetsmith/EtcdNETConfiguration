@@ -14,6 +14,7 @@ Full documentation is maintained in the [GitHub Wiki](https://github.com/bjornbo
 
 ## Overview
 
+- **Prioritized roots**: merge configuration from several etcd prefixes, with a higher-priority root overriding lower ones.
 - **Live updates** without restarting the application. Refresh is poll-based, not etcd watch-based.
 - **Change auditing** that logs added, changed, and removed keys, with optional value redaction (`***`).
 - **Fail-closed startup**: invalid options, TLS problems, or an unreachable etcd cluster prevent the host from starting.
@@ -36,16 +37,20 @@ var builder = Host.CreateDefaultBuilder();
 builder.AddEtcdConfiguration(options =>
 {
     options.EndPoints = "http://127.0.0.1:2379";
-    options.RootKey = "/myroot";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/myroot", Priority = 0 }
+    ];
+    options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
 });
 ```
 
-The library loads all keys under `RootKey` at startup and refreshes them in the background.
+The library loads all keys under every configured root at startup and refreshes them in the background. Roots are merged by `Priority`; the higher priority wins when two roots contain the same relative configuration key. `ConfigurationPrefix` is the output prefix and is never queried from etcd.
 
 ### Store configuration in etcd
 
-Keys use etcd's native `/` path hierarchy. The library maps `/` to the `:` separator used by `IConfiguration`. With `RootKey` set to `/myroot`:
+Keys use etcd's native `/` path hierarchy. The library removes each root prefix, merges the remaining relative keys, and maps `/` to the `:` separator used by `IConfiguration`. With a root `/myroot` and `ConfigurationPrefix = "/myroot"`:
 
 | etcd key | IConfiguration key | Value |
 |-|-|-|
@@ -53,7 +58,7 @@ Keys use etcd's native `/` path hierarchy. The library maps `/` to the `:` separ
 | `/myroot/connectionstrings:1` | `/myroot:connectionstrings:1` | `databaserver2` |
 | `/myroot/logging/loglevel/default` | `/myroot:logging:loglevel:default` | `Information` |
 
-Collection indices stay attached to their segment with `:` (`key:0`, `key:1`). `:` is not allowed anywhere else. Empty segments, `//`, and trailing `/` are rejected. Only strict descendants of `RootKey` are loaded, so `/myroot-other/key` is ignored when `RootKey` is `/myroot`.
+Collection indices stay attached to their segment with `:` (`key:0`, `key:1`). `:` is not allowed anywhere else. Empty segments, `//`, and trailing `/` are rejected. Only strict descendants of a root are loaded, so `/myroot-other/key` is ignored when the root is `/myroot`.
 
 The old `:`-hierarchy key format is no longer supported. A key such as `/myroot:key` fails the load with a migration error; rewrite it as `/myroot/key` before upgrading.
 
@@ -77,6 +82,8 @@ builder.ConfigureServices((ctx, services) =>
     services.Configure<Configuration>(ctx.Configuration.GetSection("/myroot"));
 });
 ```
+
+Use the configured `ConfigurationPrefix` as the section name. It does not have to match a root key.
 
 You can then depend on `IOptions<Configuration>` for the initial values, or `IOptionsMonitor<Configuration>` if you need to observe live updates.
 

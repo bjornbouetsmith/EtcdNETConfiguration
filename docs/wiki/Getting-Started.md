@@ -28,7 +28,11 @@ var builder = Host.CreateDefaultBuilder();
 builder.AddEtcdConfiguration(options =>
 {
     options.EndPoints = "http://127.0.0.1:2379";
-    options.RootKey = "/myroot";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/myroot", Priority = 0 }
+    ];
+    options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
 });
 
@@ -46,7 +50,11 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.AddEtcdConfiguration(options =>
 {
     options.EndPoints = "http://127.0.0.1:2379";
-    options.RootKey = "/myroot";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/myroot", Priority = 0 }
+    ];
+    options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
 });
 
@@ -64,9 +72,9 @@ If the initial load fails, the host does not start with empty configuration. See
 
 ## Store configuration in etcd
 
-The `RootKey` option defines the etcd key prefix. Only strict descendants of that prefix are loaded into `IConfiguration`, so `/myroot-other/key` is ignored when `RootKey` is `/myroot`.
+The `RootKeys` option defines the etcd key prefixes. Only strict descendants of a root are loaded into `IConfiguration`, so `/myroot-other/key` is ignored when a root is `/myroot`. The `ConfigurationPrefix` option defines the output prefix under which the merged values are exposed.
 
-etcd keys use the native `/` path hierarchy. The library maps `/` to the `:` separator used by `IConfiguration`. With `RootKey = "/myroot"`:
+etcd keys use the native `/` path hierarchy. The library strips each root prefix, merges the remaining relative keys by priority, and maps `/` to the `:` separator used by `IConfiguration`. With a root `/myroot` and `ConfigurationPrefix = "/myroot"`:
 
 | etcd key | IConfiguration key | Value |
 |-|-|-|
@@ -77,7 +85,25 @@ etcd keys use the native `/` path hierarchy. The library maps `/` to the `:` sep
 
 Collection indices stay attached to their segment with `:`. Do not use `:` as a hierarchy separator. Empty segments, `//`, and trailing `/` are rejected.
 
-The `RootKey` prefix is not stripped from the configuration keys. Use `GetSection("/myroot")` to bind the values under that prefix.
+The root prefix is not retained separately in the configuration keys. Use `GetSection("/myroot")` (or your configured `ConfigurationPrefix`) to bind the values.
+
+When several roots are configured, a higher `Priority` overrides a lower one for the same relative key. Priorities must be unique, and roots must not be duplicates, overlap, or nest:
+
+```csharp
+builder.AddEtcdConfiguration(options =>
+{
+    options.EndPoints = "http://127.0.0.1:2379";
+    options.ConfigurationPrefix = "/configuration";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/domains/example.com", Priority = 0 },
+        new EtcdRootKey { RootKey = "/machines/web-01",     Priority = 10 },
+        new EtcdRootKey { RootKey = "/services/checkout",   Priority = 20 }
+    ];
+});
+```
+
+This merges all three prefixes into the `/configuration` section. See [Configuration Options](Configuration-Options) for the merge example.
 
 You can add the keys with any etcd client. For example, using `etcdctl`:
 
@@ -91,7 +117,7 @@ The old `:`-hierarchy format is no longer supported. A key such as `/myroot:conn
 
 ## Bind to a strongly typed class
 
-Define a class that matches the key hierarchy below `RootKey`:
+Define a class that matches the key hierarchy below a root:
 
 ```csharp
 public class Configuration
@@ -100,7 +126,7 @@ public class Configuration
 }
 ```
 
-Register it with the options system and the section that represents `RootKey`:
+Register it with the options system and the section named by `ConfigurationPrefix`:
 
 ```csharp
 builder.ConfigureServices((ctx, services) =>

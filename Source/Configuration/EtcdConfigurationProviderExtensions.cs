@@ -206,7 +206,8 @@ public static class EtcdConfigurationProviderExtensions
     private static void CopyOptions(EtcdOptions source, EtcdOptions target)
     {
         target.EndPoints = source.EndPoints;
-        target.RootKey = source.RootKey;
+        target.RootKeys = source.RootKeys?.Select(root => root with { }).ToArray() ?? [];
+        target.ConfigurationPrefix = source.ConfigurationPrefix;
         target.RefreshInterval = source.RefreshInterval;
         target.ConfigurationTimeout = source.ConfigurationTimeout;
         target.RedactConfigurationValues = source.RedactConfigurationValues;

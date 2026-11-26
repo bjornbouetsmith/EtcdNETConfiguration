@@ -156,7 +156,10 @@ public class EtcdTlsOptionsValidatorTest
     [InlineData(" / ")]
     public void RootKeyIsTheEtcdRoot_Fails(string rootKey)
     {
-        var options = new EtcdOptions { RootKey = rootKey };
+        var options = new EtcdOptions
+        {
+            RootKeys = [new EtcdRootKey { RootKey = rootKey }]
+        };
 
         Assert.Contains(
             EtcdTlsOptionsValidator.Validate(options),
@@ -170,11 +173,61 @@ public class EtcdTlsOptionsValidatorTest
     [InlineData("/configuration:key", "RootKey must not contain ':'; use '/' to separate etcd path segments.")]
     public void RootKeyIsNotACanonicalPath_Fails(string rootKey, string expectedFailure)
     {
-        var options = new EtcdOptions { RootKey = rootKey };
+        var options = new EtcdOptions
+        {
+            RootKeys = [new EtcdRootKey { RootKey = rootKey }]
+        };
 
         Assert.Contains(
             EtcdTlsOptionsValidator.Validate(options),
             failure => failure == expectedFailure);
+    }
+
+    [Fact]
+    public void DuplicatePriorities_Fail()
+    {
+        var options = new EtcdOptions
+        {
+            RootKeys =
+            [
+                new EtcdRootKey { RootKey = "/first", Priority = 5 },
+                new EtcdRootKey { RootKey = "/second", Priority = 5 }
+            ]
+        };
+
+        Assert.Contains(
+            EtcdTlsOptionsValidator.Validate(options),
+            failure => failure.Contains("unique Priority values", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NestedRoots_Fail()
+    {
+        var options = new EtcdOptions
+        {
+            RootKeys =
+            [
+                new EtcdRootKey { RootKey = "/app", Priority = 0 },
+                new EtcdRootKey { RootKey = "/APP/service", Priority = 10 }
+            ]
+        };
+
+        Assert.Contains(
+            EtcdTlsOptionsValidator.Validate(options),
+            failure => failure.Contains("overlap", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("/", "ConfigurationPrefix must not be '/'")]
+    [InlineData("configuration", "ConfigurationPrefix must start with '/'.")]
+    [InlineData("/configuration/", "ConfigurationPrefix must not end with '/'.")]
+    public void ConfigurationPrefixIsNotCanonical_Fails(string configurationPrefix, string expectedFailure)
+    {
+        var options = new EtcdOptions { ConfigurationPrefix = configurationPrefix };
+
+        Assert.Contains(
+            EtcdTlsOptionsValidator.Validate(options),
+            failure => failure.Contains(expectedFailure, StringComparison.Ordinal));
     }
 
     [Fact]
