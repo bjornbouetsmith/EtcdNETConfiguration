@@ -57,8 +57,8 @@ public class EtcdConfigurationSourceTest
         {
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/custom-root", Priority = 0 },
-                new EtcdRootKey { RootKey = "/other-root", Priority = 10 }
+                new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/other-root/", Priority = 10 }
             ]
         };
         var client = new Mock<IEtcdClient>();
@@ -72,14 +72,14 @@ public class EtcdConfigurationSourceTest
 
         client.Verify(
             client => client.GetRange(
-                "/custom-root",
+                "/custom-root/",
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         client.Verify(
             client => client.GetRange(
-                "/other-root",
+                "/other-root/",
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),
@@ -91,7 +91,7 @@ public class EtcdConfigurationSourceTest
     {
         var options = new EtcdOptions
         {
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root" }],
+            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/" }],
             ConfigurationPrefix = "/app"
         };
         var client = CreateClient(CreateResponse(
@@ -115,7 +115,7 @@ public class EtcdConfigurationSourceTest
         var options = new EtcdOptions
         {
             EndPoints = "http://etcd:2379",
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root" }]
+            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/" }]
         };
         var client = CreateClient(CreateResponse());
         var factory = CreateFactory(client);

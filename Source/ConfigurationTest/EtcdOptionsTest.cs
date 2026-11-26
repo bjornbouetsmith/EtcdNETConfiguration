@@ -14,7 +14,7 @@ public class EtcdOptionsTest
 
         Assert.Equal("http://127.0.0.1:2379", options.EndPoints);
         var rootKey = Assert.Single(options.RootKeys);
-        Assert.Equal("/configuration", rootKey.RootKey);
+        Assert.Equal("/configuration/", rootKey.RootKey);
         Assert.Equal(0, rootKey.Priority);
         Assert.Equal("/configuration", options.ConfigurationPrefix);
         Assert.Equal(TimeSpan.FromMinutes(1), options.RefreshInterval);
@@ -33,7 +33,7 @@ public class EtcdOptionsTest
             EndPoints = "http://localhost:2379,http://localhost:2380",
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/custom-root", Priority = 5 }
+                new EtcdRootKey { RootKey = "/custom-root/", Priority = 5 }
             ],
             ConfigurationPrefix = "/custom-prefix",
             RefreshInterval = TimeSpan.FromSeconds(30),
@@ -50,7 +50,7 @@ public class EtcdOptionsTest
 
         Assert.Equal("http://localhost:2379,http://localhost:2380", options.EndPoints);
         var rootKey = Assert.Single(options.RootKeys);
-        Assert.Equal("/custom-root", rootKey.RootKey);
+        Assert.Equal("/custom-root/", rootKey.RootKey);
         Assert.Equal(5, rootKey.Priority);
         Assert.Equal("/custom-prefix", options.ConfigurationPrefix);
         Assert.Equal(TimeSpan.FromSeconds(30), options.RefreshInterval);
@@ -71,8 +71,8 @@ public class EtcdOptionsTest
             EndPoints = "http://localhost:2379",
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/custom-root", Priority = 0 },
-                new EtcdRootKey { RootKey = "/other-root", Priority = 10 }
+                new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/other-root/", Priority = 10 }
             ],
             ConfigurationPrefix = "/custom-prefix",
             RefreshInterval = TimeSpan.FromSeconds(30)
@@ -82,8 +82,8 @@ public class EtcdOptionsTest
             EndPoints = "http://localhost:2379",
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/custom-root", Priority = 0 },
-                new EtcdRootKey { RootKey = "/other-root", Priority = 10 }
+                new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/other-root/", Priority = 10 }
             ],
             ConfigurationPrefix = "/custom-prefix",
             RefreshInterval = TimeSpan.FromSeconds(30)
@@ -98,11 +98,11 @@ public class EtcdOptionsTest
     {
         var first = new EtcdOptions
         {
-            RootKeys = [new EtcdRootKey { RootKey = "/CUSTOM-ROOT", Priority = 0 }]
+            RootKeys = [new EtcdRootKey { RootKey = "/CUSTOM-ROOT/", Priority = 0 }]
         };
         var second = new EtcdOptions
         {
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root", Priority = 0 }]
+            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 }]
         };
 
         Assert.Equal(first, second);
@@ -114,11 +114,11 @@ public class EtcdOptionsTest
     {
         var first = new EtcdOptions
         {
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root", Priority = 0 }]
+            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 }]
         };
         var second = new EtcdOptions
         {
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root", Priority = 10 }]
+            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/", Priority = 10 }]
         };
 
         Assert.NotEqual(first, second);
@@ -131,16 +131,16 @@ public class EtcdOptionsTest
         {
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/first", Priority = 0 },
-                new EtcdRootKey { RootKey = "/second", Priority = 10 }
+                new EtcdRootKey { RootKey = "/first/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/second/", Priority = 10 }
             ]
         };
         var second = new EtcdOptions
         {
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/second", Priority = 10 },
-                new EtcdRootKey { RootKey = "/first", Priority = 0 }
+                new EtcdRootKey { RootKey = "/second/", Priority = 10 },
+                new EtcdRootKey { RootKey = "/first/", Priority = 0 }
             ]
         };
 
@@ -173,8 +173,8 @@ public class EtcdOptionsTest
             EndPoints = "http://localhost:2379,http://localhost:2380",
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/custom-root", Priority = 0 },
-                new EtcdRootKey { RootKey = "/another-root", Priority = 10 }
+                new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/another-root/", Priority = 10 }
             ],
             ConfigurationPrefix = "/custom-prefix",
             RefreshInterval = TimeSpan.FromSeconds(30),
@@ -259,7 +259,7 @@ public class EtcdOptionsTest
     {
         var options = new EtcdOptions
         {
-            RootKeys = [new EtcdRootKey { RootKey = "/configuration" }]
+            RootKeys = [new EtcdRootKey { RootKey = "/configuration/" }]
         };
 
         Assert.Empty(Validate(options));
@@ -270,7 +270,7 @@ public class EtcdOptionsTest
     {
         var options = new EtcdOptions
         {
-            RootKeys = [new EtcdRootKey { RootKey = " /configuration " }]
+            RootKeys = [new EtcdRootKey { RootKey = " /configuration/ " }]
         };
 
         Assert.Empty(Validate(options));
@@ -278,9 +278,9 @@ public class EtcdOptionsTest
 
     [Theory]
     [InlineData("configuration", "RootKey must start with '/'.")]
-    [InlineData("/configuration/", "RootKey must not end with '/'.")]
-    [InlineData("/configuration//nested", "RootKey must not contain empty path segments ('//').")]
-    [InlineData("/configuration:key", "RootKey must not contain ':'; use '/' to separate etcd path segments.")]
+    [InlineData("/configuration", "RootKey must end with '/'.")]
+    [InlineData("/configuration//nested/", "RootKey must not contain empty path segments ('//').")]
+    [InlineData("/configuration:key/", "RootKey must not contain ':'; use '/' to separate etcd path segments.")]
     public void Validation_WhenRootKeyIsNotACanonicalPath_ReturnsError(string rootKey, string expectedError)
     {
         var options = new EtcdOptions
@@ -300,8 +300,8 @@ public class EtcdOptionsTest
         {
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/first", Priority = 10 },
-                new EtcdRootKey { RootKey = "/second", Priority = 10 }
+                new EtcdRootKey { RootKey = "/first/", Priority = 10 },
+                new EtcdRootKey { RootKey = "/second/", Priority = 10 }
             ]
         };
 
@@ -313,9 +313,9 @@ public class EtcdOptionsTest
     }
 
     [Theory]
-    [InlineData("/app", "/APP")]
-    [InlineData("/app", "/app/service")]
-    [InlineData("/app", "/APP/service")]
+    [InlineData("/app/", "/APP/")]
+    [InlineData("/app/", "/app/service/")]
+    [InlineData("/app/", "/APP/service/")]
     public void Validation_WhenRootsOverlap_ReturnsError(string firstRoot, string secondRoot)
     {
         var options = new EtcdOptions
@@ -340,8 +340,8 @@ public class EtcdOptionsTest
         {
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/app", Priority = 0 },
-                new EtcdRootKey { RootKey = "/application", Priority = 10 }
+                new EtcdRootKey { RootKey = "/app/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/application/", Priority = 10 }
             ]
         };
 
@@ -539,8 +539,8 @@ public class EtcdOptionsTest
             EndPoints = null,
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/app", Priority = 10 },
-                new EtcdRootKey { RootKey = "/app/service", Priority = 10 }
+                new EtcdRootKey { RootKey = "/app/", Priority = 10 },
+                new EtcdRootKey { RootKey = "/app/service/", Priority = 10 }
             ],
             ConfigurationPrefix = "/",
             RefreshInterval = TimeSpan.FromSeconds(-1),

@@ -9,11 +9,12 @@ public sealed record EtcdRootKey
     /// <summary>
     /// Gets or sets the etcd prefix to load configuration from.
     /// Only strict descendants of the prefix are loaded; the key <c>/prefix-other/key</c> is
-    /// not in scope of <c>/prefix</c>.
-    /// The prefix must start with '/', must not be '/', must not end with '/', and must not
-    /// contain empty path segments or ':'. Defaults to "/configuration".
+    /// not in scope of <c>/prefix/</c>.
+    /// The prefix must start with '/', must not be '/', must end with '/', and must not
+    /// contain empty path segments or ':'. The trailing '/' scopes the etcd range query so
+    /// <c>/app/</c> cannot read keys under <c>/application/</c>. Defaults to "/configuration/".
     /// </summary>
-    public string? RootKey { get; set; } = "/configuration";
+    public string? RootKey { get; set; } = "/configuration/";
 
     /// <summary>
     /// Gets or sets the merge priority. Higher values override lower values when the same

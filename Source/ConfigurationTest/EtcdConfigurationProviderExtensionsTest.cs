@@ -114,7 +114,7 @@ public class EtcdConfigurationProviderExtensionsTest
     public void AddEtcdConfiguration_DeepCopiesRootKeys()
     {
         var builder = new CapturingHostBuilder();
-        var callerRoot = new EtcdRootKey { RootKey = "/caller-root", Priority = 5 };
+        var callerRoot = new EtcdRootKey { RootKey = "/caller-root/", Priority = 5 };
         builder.AddEtcdConfiguration(options =>
         {
             options.RootKeys = [callerRoot];
@@ -124,11 +124,11 @@ public class EtcdConfigurationProviderExtensionsTest
         using var provider = BuildServiceProvider(builder);
         var resolvedOptions = provider.GetRequiredService<EtcdOptions>();
 
-        callerRoot.RootKey = "/mutated-root";
+        callerRoot.RootKey = "/mutated-root/";
         callerRoot.Priority = 99;
 
         var resolvedRoot = Assert.Single(resolvedOptions.RootKeys);
-        Assert.Equal("/caller-root", resolvedRoot.RootKey);
+        Assert.Equal("/caller-root/", resolvedRoot.RootKey);
         Assert.Equal(5, resolvedRoot.Priority);
         Assert.Equal("/app", resolvedOptions.ConfigurationPrefix);
         Assert.NotSame(callerRoot, resolvedRoot);

@@ -34,9 +34,9 @@ TLS startup fails when any of the following is true:
 - CA, certificate, or key files are missing, corrupt, or cannot be parsed.
 - A PKCS#12 password is wrong, a PEM key does not match its certificate, or a client certificate has no private key, is expired, or lacks the `clientAuth` EKU.
 - `RootKeys` is missing or empty.
-- A root key is not a canonical path: it is `/`, does not start with `/`, ends with `/`, or contains `//` or `:`.
+- A root key is not a canonical path: it is `/`, does not start with `/`, does not end with `/`, or contains `//` or `:`.
 - Two roots have the same `Priority`.
-- Roots are duplicates, or they overlap or nest case-insensitively (`/app` and `/APP/service`).
+- Roots are duplicates, or they overlap or nest case-insensitively (`/app/` and `/APP/service/`).
 - `ConfigurationPrefix` is not a canonical non-root path.
 
 Validation also runs at the start of every configuration load, before any etcd query, so an `OptionsValidationException` is raised even when the loader is constructed directly.
@@ -45,9 +45,9 @@ Validation also runs at the start of every configuration load, before any etcd q
 
 After reading etcd, the loader validates and maps every key under each configured root before it becomes configuration:
 
-- Old `:`-hierarchy keys such as `/myroot:key` are rejected with a migration error. Use `/myroot/key`.
+- Old `:`-hierarchy keys are not loaded. Legacy siblings such as `/myroot:key` are outside the `/myroot/` root and are ignored; rewrite them as `/myroot/key`.
 - `:` is allowed only as a collection index suffix such as `key:0`; other uses are rejected.
-- Empty segments, `//`, and trailing `/` are rejected.
+- Returned etcd keys with empty segments, `//`, or a trailing `/` are rejected. Root keys themselves must end with `/`.
 - Two in-scope keys under the **same** root that map to the same configuration key are a collision. Collision detection is case-insensitive.
 - The same relative key under **different** roots is merged by priority, not treated as a collision. The higher `Priority` wins.
 - Keys outside a root's path boundary are ignored, not errors.

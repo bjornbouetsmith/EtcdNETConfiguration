@@ -43,7 +43,7 @@ public record EtcdOptions
     /// Each root has an etcd prefix and a unique <see cref="EtcdRootKey.Priority"/>.
     /// Higher priorities override lower priorities when two roots contain the same relative
     /// configuration key. Only strict descendants of each root are loaded.
-    /// Defaults to a single "/configuration" root with priority 0.
+    /// Defaults to a single "/configuration/" root with priority 0.
     /// </summary>
     [Required]
     [MinLength(1, ErrorMessage = "At least one root key must be configured")]

@@ -25,23 +25,27 @@ internal static partial class EtcdKeyMapper
     private static partial Regex ValidSegmentPattern();
 
     /// <summary>
-    /// Trims whitespace and normalizes the root key to a single leading '/' with no trailing '/'.
+    /// Trims whitespace and normalizes the root key to exactly one leading and one trailing '/'.
+    /// The trailing '/' is required so an etcd range query for <c>/app/</c> cannot read keys
+    /// under <c>/application/</c>.
     /// </summary>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>The normalized root key.</returns>
     internal static string NormalizeRootKey(string? rootKey)
     {
-        if (string.IsNullOrWhiteSpace(rootKey))
+        var trimmedRootKey = rootKey?.Trim().Trim('/');
+
+        if (string.IsNullOrEmpty(trimmedRootKey))
         {
             return "/";
         }
 
-        return "/" + rootKey.Trim().Trim('/');
+        return "/" + trimmedRootKey + "/";
     }
 
     /// <summary>
     /// Gets whether the etcd key is a strict descendant of the root key. Scope is determined
-    /// by the path boundary, so <c>/prefix-other/key</c> is not in the scope of <c>/prefix</c>.
+    /// by the path boundary, so <c>/prefix-other/key</c> is not in the scope of <c>/prefix/</c>.
     /// The comparison is case-sensitive because etcd keys are case-sensitive.
     /// </summary>
     /// <param name="etcdKey">The raw etcd key.</param>
@@ -67,7 +71,7 @@ internal static partial class EtcdKeyMapper
     internal static bool IsOldFormat(string etcdKey, string? rootKey)
     {
         var normalizedRootKey = NormalizeRootKey(rootKey);
-        return etcdKey.StartsWith(normalizedRootKey + ":", StringComparison.Ordinal);
+        return etcdKey.StartsWith(normalizedRootKey.TrimEnd('/') + ":", StringComparison.Ordinal);
     }
 
     /// <summary>

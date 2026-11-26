@@ -39,7 +39,7 @@ builder.AddEtcdConfiguration(options =>
     options.EndPoints = "http://127.0.0.1:2379";
     options.RootKeys =
     [
-        new EtcdRootKey { RootKey = "/myroot", Priority = 0 }
+        new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }
     ];
     options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
@@ -50,7 +50,7 @@ The library loads all keys under every configured root at startup and refreshes 
 
 ### Store configuration in etcd
 
-Keys use etcd's native `/` path hierarchy. The library removes each root prefix, merges the remaining relative keys, and maps `/` to the `:` separator used by `IConfiguration`. With a root `/myroot` and `ConfigurationPrefix = "/myroot"`:
+Keys use etcd's native `/` path hierarchy. The library removes each root prefix, merges the remaining relative keys, and maps `/` to the `:` separator used by `IConfiguration`. Root keys must end with `/`; the trailing slash scopes the etcd range query so `/app/` cannot read keys under `/application/`. With a root `/myroot/` and `ConfigurationPrefix = "/myroot"`:
 
 | etcd key | IConfiguration key | Value |
 |-|-|-|
@@ -58,9 +58,9 @@ Keys use etcd's native `/` path hierarchy. The library removes each root prefix,
 | `/myroot/connectionstrings:1` | `/myroot:connectionstrings:1` | `databaserver2` |
 | `/myroot/logging/loglevel/default` | `/myroot:logging:loglevel:default` | `Information` |
 
-Collection indices stay attached to their segment with `:` (`key:0`, `key:1`). `:` is not allowed anywhere else. Empty segments, `//`, and trailing `/` are rejected. Only strict descendants of a root are loaded, so `/myroot-other/key` is ignored when the root is `/myroot`.
+Collection indices stay attached to their segment with `:` (`key:0`, `key:1`). `:` is not allowed anywhere else. Returned etcd keys with empty segments or a trailing `/` are rejected. Only strict descendants of a root are loaded, so `/myroot-other/key` is ignored when the root is `/myroot/`.
 
-The old `:`-hierarchy key format is no longer supported. A key such as `/myroot:key` fails the load with a migration error; rewrite it as `/myroot/key` before upgrading.
+The old `:`-hierarchy key format is no longer supported. Rewrite a key such as `/myroot:key` as `/myroot/key` before upgrading; with the root `/myroot/`, the legacy key is outside the root and is not loaded.
 
 ```bash
 etcdctl put "/myroot/connectionstrings:0" "databaserver1"

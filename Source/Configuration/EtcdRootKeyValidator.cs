@@ -53,39 +53,52 @@ internal static class EtcdRootKeyValidator
 
         for (var index = 0; index < rootKeys.Count; index++)
         {
-            var root = rootKeys[index];
-            if (root is null)
-            {
-                failures.Add($"RootKeys[{index}] must not be null.");
-                continue;
-            }
-
-            if (priorities.TryGetValue(root.Priority, out var count))
-            {
-                priorities[root.Priority] = count + 1;
-            }
-            else
-            {
-                priorities[root.Priority] = 1;
-            }
-
-            if (string.IsNullOrWhiteSpace(root.RootKey))
-            {
-                failures.Add("RootKey must be set to a non empty string");
-                continue;
-            }
-
-            var rootKey = root.RootKey.Trim();
-            var error = ValidateRootKeyPath(rootKey);
-            if (error is not null)
-            {
-                failures.Add(error);
-                continue;
-            }
-
-            validRoots.Add(rootKey);
+            ValidateRootKey(rootKeys[index], index, priorities, validRoots, failures);
         }
 
+        AddDuplicatePriorityFailures(priorities, failures);
+        AddRootRelationshipFailures(validRoots, failures);
+        return failures;
+    }
+
+    private static void ValidateRootKey(
+        EtcdRootKey? root,
+        int index,
+        Dictionary<int, int> priorities,
+        List<string> validRoots,
+        List<string> failures)
+    {
+        if (root is null)
+        {
+            failures.Add($"RootKeys[{index}] must not be null.");
+            return;
+        }
+
+        priorities[root.Priority] = priorities.TryGetValue(root.Priority, out var count)
+            ? count + 1
+            : 1;
+
+        if (string.IsNullOrWhiteSpace(root.RootKey))
+        {
+            failures.Add("RootKey must be set to a non empty string");
+            return;
+        }
+
+        var rootKey = root.RootKey.Trim();
+        var error = ValidateRootKeyPath(rootKey);
+        if (error is not null)
+        {
+            failures.Add(error);
+            return;
+        }
+
+        validRoots.Add(rootKey);
+    }
+
+    private static void AddDuplicatePriorityFailures(
+        Dictionary<int, int> priorities,
+        List<string> failures)
+    {
         foreach (var priority in priorities)
         {
             if (priority.Value > 1)
@@ -94,7 +107,12 @@ internal static class EtcdRootKeyValidator
                     $"RootKeys must have unique Priority values; priority {priority.Key} is used more than once.");
             }
         }
+    }
 
+    private static void AddRootRelationshipFailures(
+        List<string> validRoots,
+        List<string> failures)
+    {
         for (var first = 0; first < validRoots.Count; first++)
         {
             for (var second = first + 1; second < validRoots.Count; second++)
@@ -116,8 +134,6 @@ internal static class EtcdRootKeyValidator
                 }
             }
         }
-
-        return failures;
     }
 
     /// <summary>
@@ -163,8 +179,8 @@ internal static class EtcdRootKeyValidator
     }
 
     private static bool IsNested(string firstRoot, string secondRoot) =>
-        firstRoot.StartsWith(secondRoot + "/", StringComparison.OrdinalIgnoreCase) ||
-        secondRoot.StartsWith(firstRoot + "/", StringComparison.OrdinalIgnoreCase);
+        firstRoot.StartsWith(secondRoot, StringComparison.OrdinalIgnoreCase) ||
+        secondRoot.StartsWith(firstRoot, StringComparison.OrdinalIgnoreCase);
 
     private static string? ValidateRootKeyPath(string rootKey)
     {
@@ -178,11 +194,6 @@ internal static class EtcdRootKeyValidator
             return "RootKey must start with '/'.";
         }
 
-        if (rootKey.EndsWith('/'))
-        {
-            return "RootKey must not end with '/'.";
-        }
-
         if (rootKey.Contains("//", StringComparison.Ordinal))
         {
             return "RootKey must not contain empty path segments ('//').";
@@ -191,6 +202,11 @@ internal static class EtcdRootKeyValidator
         if (rootKey.Contains(':'))
         {
             return "RootKey must not contain ':'; use '/' to separate etcd path segments.";
+        }
+
+        if (!rootKey.EndsWith('/'))
+        {
+            return "RootKey must end with '/'.";
         }
 
         return null;

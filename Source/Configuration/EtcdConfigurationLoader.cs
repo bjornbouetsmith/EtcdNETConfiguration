@@ -1,6 +1,8 @@
 ﻿using dotnet_etcd.interfaces;
+using Etcdserverpb;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Mvccpb;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -133,60 +135,14 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
                 deadline: deadLine.UtcDateTime,
                 cancellationToken: cancellationToken);
 
-            // Collision detection is scoped to one root. The same relative key under a
-            // different root is resolved by priority instead.
-            var rootKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var kv in response.Kvs)
-            {
-                // Count every returned key so out-of-scope keys and collisions cannot bypass the limit.
-                if (processedKeyCount >= _options.MaximumConfigurationKeyCount)
-                {
-                    throw new EtcdConfigurationLimitExceededException(
-                        $"The etcd response exceeded MaximumConfigurationKeyCount ({_options.MaximumConfigurationKeyCount}). " +
-                        "Narrow RootKeys or raise the limit explicitly.");
-                }
-
-                processedKeyCount++;
-
-                totalSize += (long)kv.Key.Length + kv.Value.Length;
-                if (totalSize > _options.MaximumConfigurationSizeBytes)
-                {
-                    throw new EtcdConfigurationLimitExceededException(
-                        $"The etcd response exceeded MaximumConfigurationSizeBytes ({_options.MaximumConfigurationSizeBytes}). " +
-                        "Narrow RootKeys or raise the limit explicitly.");
-                }
-
-                var etcdKey = kv.Key.ToStringUtf8();
-                var value = kv.Value.ToStringUtf8();
-
-                if (!TryMapKey(etcdKey, normalizedRootKey, out var relativeKey))
-                {
-                    continue;
-                }
-
-                if (rootKeys.TryGetValue(relativeKey, out var existingEtcdKey))
-                {
-                    throw new EtcdConfigurationKeyCollisionException(
-                        $"The etcd keys '{existingEtcdKey}' and '{etcdKey}' under root '{normalizedRootKey}' " +
-                        $"both map to the relative configuration key '{relativeKey}' " +
-                        $"('{configurationPrefix}{relativeKey}'). Remove or rename one of the keys.");
-                }
-
-                rootKeys[relativeKey] = etcdKey;
-
-                if (merged.TryGetValue(relativeKey, out var existing) &&
-                    existing.Root.Priority < root.Priority)
-                {
-                    _logger.LogDebug(
-                        "Configuration key {Key} from root {WinningRoot} overrides root {ShadowedRoot}",
-                        relativeKey,
-                        normalizedRootKey,
-                        EtcdKeyMapper.NormalizeRootKey(existing.Root.RootKey));
-                }
-
-                merged[relativeKey] = new MergedEntry(relativeKey, value, root);
-            }
+            MergeRootResponse(
+                response,
+                root,
+                normalizedRootKey,
+                configurationPrefix,
+                merged,
+                ref totalSize,
+                ref processedKeyCount);
         }
 
         var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -198,6 +154,101 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
         var changes = LogChangedConfigurationKeys(data);
         _previousVersion = data;
         return new(data, changes);
+    }
+
+    /// <summary>
+    /// Merges the keys returned for one root. Collision detection is scoped to that root; the
+    /// same relative key under a different root is resolved by priority instead.
+    /// </summary>
+    private void MergeRootResponse(
+        RangeResponse response,
+        EtcdRootKey root,
+        string normalizedRootKey,
+        string configurationPrefix,
+        Dictionary<string, MergedEntry> merged,
+        ref long totalSize,
+        ref int processedKeyCount)
+    {
+        var rootKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var kv in response.Kvs)
+        {
+            TrackResponseEntry(kv, ref totalSize, ref processedKeyCount);
+
+            var etcdKey = kv.Key.ToStringUtf8();
+            var value = kv.Value.ToStringUtf8();
+
+            if (!TryMapKey(etcdKey, normalizedRootKey, out var relativeKey))
+            {
+                continue;
+            }
+
+            AddMergedEntry(
+                etcdKey,
+                value,
+                relativeKey,
+                root,
+                normalizedRootKey,
+                configurationPrefix,
+                rootKeys,
+                merged);
+        }
+    }
+
+    /// <summary>
+    /// Counts every returned key so out-of-scope keys and collisions cannot bypass the limits.
+    /// </summary>
+    private void TrackResponseEntry(KeyValue kv, ref long totalSize, ref int processedKeyCount)
+    {
+        if (processedKeyCount >= _options.MaximumConfigurationKeyCount)
+        {
+            throw new EtcdConfigurationLimitExceededException(
+                $"The etcd response exceeded MaximumConfigurationKeyCount ({_options.MaximumConfigurationKeyCount}). " +
+                "Narrow RootKeys or raise the limit explicitly.");
+        }
+
+        processedKeyCount++;
+
+        totalSize += (long)kv.Key.Length + kv.Value.Length;
+        if (totalSize > _options.MaximumConfigurationSizeBytes)
+        {
+            throw new EtcdConfigurationLimitExceededException(
+                $"The etcd response exceeded MaximumConfigurationSizeBytes ({_options.MaximumConfigurationSizeBytes}). " +
+                "Narrow RootKeys or raise the limit explicitly.");
+        }
+    }
+
+    private void AddMergedEntry(
+        string etcdKey,
+        string value,
+        string relativeKey,
+        EtcdRootKey root,
+        string normalizedRootKey,
+        string configurationPrefix,
+        Dictionary<string, string> rootKeys,
+        Dictionary<string, MergedEntry> merged)
+    {
+        if (rootKeys.TryGetValue(relativeKey, out var existingEtcdKey))
+        {
+            throw new EtcdConfigurationKeyCollisionException(
+                $"The etcd keys '{existingEtcdKey}' and '{etcdKey}' under root '{normalizedRootKey}' " +
+                $"both map to the relative configuration key '{relativeKey}' " +
+                $"('{configurationPrefix}{relativeKey}'). Remove or rename one of the keys.");
+        }
+
+        rootKeys[relativeKey] = etcdKey;
+
+        if (merged.TryGetValue(relativeKey, out var existing) &&
+            existing.Root.Priority < root.Priority)
+        {
+            _logger.LogDebug(
+                "Configuration key {Key} from root {WinningRoot} overrides root {ShadowedRoot}",
+                relativeKey,
+                normalizedRootKey,
+                EtcdKeyMapper.NormalizeRootKey(existing.Root.RootKey));
+        }
+
+        merged[relativeKey] = new MergedEntry(relativeKey, value, root);
     }
 
     /// <summary>
@@ -215,7 +266,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
         {
             throw new EtcdConfigurationKeyFormatException(
                 $"The etcd key '{etcdKey}' uses the removed ':' hierarchy format. " +
-                $"Rewrite it using '/' path segments, for example '{rootKey}/key/subkey'. " +
+                $"Rewrite it using '/' path segments, for example '{rootKey}key/subkey'. " +
                 "Configuration keys are still exposed with ':' separators.");
         }
 

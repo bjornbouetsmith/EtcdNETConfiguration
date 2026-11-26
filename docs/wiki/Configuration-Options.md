@@ -18,7 +18,7 @@ builder.AddEtcdConfiguration(options =>
     options.EndPoints = "http://127.0.0.1:2379,http://127.0.0.1:2380";
     options.RootKeys =
     [
-        new EtcdRootKey { RootKey = "/myroot", Priority = 0 }
+        new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }
     ];
     options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(1);
@@ -32,7 +32,7 @@ builder.AddEtcdConfiguration(options =>
 | Option | Default | Validation |
 |-|-|-|
 | `EndPoints` | `http://127.0.0.1:2379` | Required; comma-separated absolute `http://` or `https://` URLs. The scheme must match `UseSsl`; mixed schemes fail. |
-| `RootKeys` | one root: `/configuration`, priority `0` | Required; at least one root. Each root key must start with `/`, must not be `/` or end with `/`, and must not contain `//` or `:`. Priorities must be unique. Roots must not be duplicates, overlap, or nest, compared case-insensitively. |
+| `RootKeys` | one root: `/configuration/`, priority `0` | Required; at least one root. Each root key must start with `/`, must not be `/`, must end with `/`, and must not contain `//` or `:`. The trailing `/` scopes the etcd range query, so `/app/` cannot read `/application/`. Priorities must be unique. Roots must not be duplicates, overlap, or nest, compared case-insensitively. |
 | `ConfigurationPrefix` | `/configuration` | Required; must start with `/`, must not be `/` or end with `/`, and must not contain `//` or `:`. The prefix is output-only; it is never queried from etcd. |
 | `RefreshInterval` | 1 minute | Must be between `TimeSpan.Zero` and 24 hours, inclusive. `TimeSpan.Zero` disables background polling. |
 | `ConfigurationTimeout` | 1 second | One budget per configuration load, shared by every root query. Must be between 1 second and 1 hour, inclusive. |
@@ -68,12 +68,12 @@ See [TLS](TLS) and [Mutual TLS](Mutual-TLS).
 
 ## Root keys and ConfigurationPrefix
 
-`RootKeys` is a prioritized list of etcd prefixes to load. `ConfigurationPrefix` is the single output prefix under which the merged values are exposed. Only strict descendants of each root are loaded: with a root `/myroot`, `/myroot/key` is loaded and `/myroot-other/key` is ignored. The exact key `/myroot` is not loaded; store a root-level scalar as `/myroot/value`.
+`RootKeys` is a prioritized list of etcd prefixes to load. `ConfigurationPrefix` is the single output prefix under which the merged values are exposed. Only strict descendants of each root are loaded: with a root `/myroot/`, `/myroot/key` is loaded and `/myroot-other/key` is ignored. The root path itself (`/myroot`) is not loaded; store a root-level scalar as `/myroot/value`.
 
 ```csharp
 options.RootKeys =
 [
-    new EtcdRootKey { RootKey = "/myroot", Priority = 0 }
+    new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }
 ];
 options.ConfigurationPrefix = "/myroot";
 ```
@@ -82,7 +82,7 @@ Each root key must be a canonical etcd path:
 
 - It must start with `/`.
 - It must not be `/`, because that would load every key in etcd.
-- It must not end with `/`.
+- It must end with `/`. The trailing slash is the scope boundary: `/app/` cannot read keys under `/application/`.
 - It must not contain empty segments (`//`).
 - It must not contain `:`. Use `/` to separate etcd path segments.
 
@@ -99,9 +99,9 @@ options.ConfigurationPrefix = "/configuration";
 
 options.RootKeys =
 [
-    new EtcdRootKey { RootKey = "/domains/example.com", Priority = 0 },
-    new EtcdRootKey { RootKey = "/machines/web-01",     Priority = 10 },
-    new EtcdRootKey { RootKey = "/services/checkout",   Priority = 20 }
+    new EtcdRootKey { RootKey = "/domains/example.com/", Priority = 0 },
+    new EtcdRootKey { RootKey = "/machines/web-01/",     Priority = 10 },
+    new EtcdRootKey { RootKey = "/services/checkout/",   Priority = 20 }
 ];
 ```
 
@@ -120,9 +120,9 @@ Final configuration:
 /configuration:Kafka:BootStrapServers:0 = host-1
 ```
 
-Priorities must be unique. Roots must not be duplicates, overlap, or nest, and those comparisons are case-insensitive (`/app` and `/APP/service` are rejected). etcd key scope matching itself stays case-sensitive, because etcd keys are case-sensitive.
+Priorities must be unique. Roots must not be duplicates, overlap, or nest, and those comparisons are case-insensitive (`/app/` and `/APP/service/` are rejected). etcd key scope matching itself stays case-sensitive, because etcd keys are case-sensitive.
 
-etcd keys use `/` as the path hierarchy. The library maps each `/` to the `:` separator used by `IConfiguration`. Collection indices stay attached to their segment with `:`. With a root `/myroot` and `ConfigurationPrefix = "/myroot"`:
+etcd keys use `/` as the path hierarchy. The library maps each `/` to the `:` separator used by `IConfiguration`. Collection indices stay attached to their segment with `:`. With a root `/myroot/` and `ConfigurationPrefix = "/myroot"`:
 
 | etcd key | IConfiguration key | Value |
 |-|-|-|
@@ -134,13 +134,13 @@ Bind with `GetSection(options.ConfigurationPrefix)`. See [Getting Started](Getti
 
 ### Read limits and timeout
 
-`MaximumConfigurationKeyCount` and `MaximumConfigurationSizeBytes` are cumulative for one configuration load across every root. Every key returned by etcd counts toward the limits, including keys outside a root's scope and keys that are later rejected. Overlapping sibling prefixes such as `/app` and `/application` can cause a key to be counted twice.
+`MaximumConfigurationKeyCount` and `MaximumConfigurationSizeBytes` are cumulative for one configuration load across every root. Every key returned by etcd counts toward the limits, including keys outside a root's scope and keys that are later rejected. Sibling roots such as `/app/` and `/application/` do not overlap, so each returned key belongs to only one root range.
 
 `ConfigurationTimeout` is one budget per configuration load. Every root query shares the same deadline; the budget is not reset per root.
 
 ### Migrating from a single root
 
-`RootKey` was removed in 2.0. To preserve the previous binding location, configure one root and set `ConfigurationPrefix` to the old root:
+`RootKey` was removed in 2.0. To preserve the previous binding location, configure one root and set `ConfigurationPrefix` to the old root. In 1.x the root did not need a trailing slash; in 2.0 every root key must end with `/`.
 
 ```csharp
 // before
@@ -148,7 +148,7 @@ options.RootKey = "/myroot";
 // configuration.GetSection("/myroot")
 
 // after
-options.RootKeys = [new EtcdRootKey { RootKey = "/myroot", Priority = 0 }];
+options.RootKeys = [new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }];
 options.ConfigurationPrefix = "/myroot";
 // configuration.GetSection("/myroot")
 ```

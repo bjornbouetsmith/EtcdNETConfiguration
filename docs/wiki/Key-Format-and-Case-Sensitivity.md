@@ -19,7 +19,7 @@ The root prefix itself is not part of the relative key. The final configuration 
 
 ## Creating keys
 
-Use `etcdctl` or any etcd client. The examples below assume a root `/myroot` and `ConfigurationPrefix = "/myroot"`, which preserves the historical layout.
+Use `etcdctl` or any etcd client. The examples below assume a root `/myroot/` and `ConfigurationPrefix = "/myroot"`, which preserves the historical layout.
 
 ### Scalars
 
@@ -114,19 +114,19 @@ Each configured root key must be a canonical path:
 
 - It must start with `/`.
 - It must not be `/`.
-- It must not end with `/`.
+- It must end with `/`. The trailing slash scopes the etcd range query, so `/app/` cannot read keys under `/application/`.
 - It must not contain empty segments (`//`).
 - It must not contain `:`.
 
 Surrounding whitespace is trimmed for validation.
 
-Every root must have a unique `Priority`. Roots must not be duplicates, overlap, or nest, and those comparisons are case-insensitive. For example, `/app` together with `/APP`, `/app/service`, or `/APP/service` is rejected, while `/app` together with `/application` is allowed.
+Every root must have a unique `Priority`. Roots must not be duplicates, overlap, or nest, and those comparisons are case-insensitive. For example, `/app/` together with `/APP/`, `/app/service/`, or `/APP/service/` is rejected, while `/app/` together with `/application/` is allowed.
 
 `ConfigurationPrefix` follows the same canonical path rules, except that it also must not be `/`. It is never queried from etcd; it only determines the final configuration key.
 
 ### Scope
 
-Only strict descendants of a root are loaded. With roots `/prefix` and `/other`:
+Only strict descendants of a root are loaded. With roots `/prefix/` and `/other/`:
 
 | etcd key | Result |
 |-|-|
@@ -134,16 +134,18 @@ Only strict descendants of a root are loaded. With roots `/prefix` and `/other`:
 | `/prefix/key/subkey` | loaded |
 | `/prefix/key:0` | loaded |
 | `/prefix-other/key` | ignored |
+| `/application/key` | ignored when the root is `/app/` |
 | `/prefix` | ignored |
-| `/prefix:key` | rejected with a migration error |
+| `/prefix:key` | ignored (legacy sibling outside `/prefix/`) |
+| `/prefix/legacy:key` | rejected (invalid `:` usage) |
 | `/prefix//key` | rejected |
 | `/prefix/key/` | rejected |
 
-Scope uses the path boundary, not a raw string prefix. `/prefix-other/key` is never in the scope of `/prefix`.
+Scope uses the path boundary, not a raw string prefix. `/prefix-other/key` is never in the scope of `/prefix/`, and `/application/key` is never in the scope of `/app/`.
 
 ## Case sensitivity
 
-etcd keys are case-sensitive. Root prefix matching is case-sensitive, so `/Prefix/key` is not in scope of `/prefix`. Root *validation* compares roots case-insensitively to reject duplicates and nesting.
+etcd keys are case-sensitive. Root prefix matching is case-sensitive, so `/Prefix/key` is not in scope of `/prefix/`. Root *validation* compares roots case-insensitively to reject duplicates and nesting.
 
 `IConfiguration` lookups are case-insensitive. The library uses `StringComparer.OrdinalIgnoreCase` for the loader snapshots, the shared store, and the configuration provider, so `configuration["/prefix:KEY"]` and `configuration["/prefix:key"]` return the same value.
 
@@ -181,7 +183,7 @@ Pick one casing convention and use it consistently. Mixed casing works for a sin
 
 ## Migrating from the old `:` format
 
-Old `:`-hierarchy keys are no longer supported. They are rejected with an error that names the key and points to the new format. This is a breaking change.
+Old `:`-hierarchy keys are no longer supported. Root keys end with `/`, so a legacy sibling such as `/myroot:key` is outside `/myroot/` and is not read. Returned keys that do not match the required path format are rejected with an error that names the key. Inventory and rewrite those legacy keys before upgrading; otherwise they are silently out of scope. This is a breaking change.
 
 | Old key | New key | IConfiguration key |
 |-|-|-|
@@ -214,7 +216,7 @@ Delete the old keys before restarting, because the library rejects the whole loa
 
 ### A key is not found in configuration
 
-- Confirm the key is under a configured root and uses the path boundary. `/prefix-other/key` is ignored when the root is `/prefix`.
+- Confirm the key is under a configured root and uses the path boundary. `/prefix-other/key` is ignored when the root is `/prefix/`.
 - Confirm the key uses `/`, not `:`.
 - Confirm the mapped key. `/prefix/key` becomes `/prefix:key` when `ConfigurationPrefix` is `/prefix`, not `key`.
 - Remember that array indices are `key:0`, not `key/0`.

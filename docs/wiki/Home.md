@@ -30,14 +30,14 @@ builder.AddEtcdConfiguration(options =>
     options.EndPoints = "http://127.0.0.1:2379";
     options.RootKeys =
     [
-        new EtcdRootKey { RootKey = "/myroot", Priority = 0 }
+        new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }
     ];
     options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
 });
 ```
 
-Keys in etcd use the native `/` path hierarchy. The library strips each root prefix, merges the remaining relative keys by priority, and maps `/` to the `:` separator used by `IConfiguration`. With a root `/myroot` and `ConfigurationPrefix = "/myroot"`, store values like this:
+Keys in etcd use the native `/` path hierarchy. The library strips each root prefix, merges the remaining relative keys by priority, and maps `/` to the `:` separator used by `IConfiguration`. Root keys must end with `/`; with a root `/myroot/` and `ConfigurationPrefix = "/myroot"`, store values like this:
 
 | etcd key | IConfiguration key | Value |
 |-|-|-|

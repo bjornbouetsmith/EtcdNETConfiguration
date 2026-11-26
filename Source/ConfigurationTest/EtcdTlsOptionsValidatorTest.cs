@@ -168,9 +168,9 @@ public class EtcdTlsOptionsValidatorTest
 
     [Theory]
     [InlineData("configuration", "RootKey must start with '/'.")]
-    [InlineData("/configuration/", "RootKey must not end with '/'.")]
-    [InlineData("/configuration//nested", "RootKey must not contain empty path segments ('//').")]
-    [InlineData("/configuration:key", "RootKey must not contain ':'; use '/' to separate etcd path segments.")]
+    [InlineData("/configuration", "RootKey must end with '/'.")]
+    [InlineData("/configuration//nested/", "RootKey must not contain empty path segments ('//').")]
+    [InlineData("/configuration:key/", "RootKey must not contain ':'; use '/' to separate etcd path segments.")]
     public void RootKeyIsNotACanonicalPath_Fails(string rootKey, string expectedFailure)
     {
         var options = new EtcdOptions
@@ -190,8 +190,8 @@ public class EtcdTlsOptionsValidatorTest
         {
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/first", Priority = 5 },
-                new EtcdRootKey { RootKey = "/second", Priority = 5 }
+                new EtcdRootKey { RootKey = "/first/", Priority = 5 },
+                new EtcdRootKey { RootKey = "/second/", Priority = 5 }
             ]
         };
 
@@ -207,8 +207,8 @@ public class EtcdTlsOptionsValidatorTest
         {
             RootKeys =
             [
-                new EtcdRootKey { RootKey = "/app", Priority = 0 },
-                new EtcdRootKey { RootKey = "/APP/service", Priority = 10 }
+                new EtcdRootKey { RootKey = "/app/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/APP/service/", Priority = 10 }
             ]
         };
 

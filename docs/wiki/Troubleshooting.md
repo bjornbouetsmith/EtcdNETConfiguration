@@ -14,7 +14,7 @@ See [dotnet/runtime#65375](https://github.com/dotnet/runtime/issues/65375) for r
 
 Startup is fail-closed. Check the exception first:
 
-- `OptionsValidationException` means an option is invalid. Check `EndPoints`, `RootKeys`, `ConfigurationPrefix`, `RefreshInterval`, `ConfigurationTimeout`, the read limits, and the TLS settings. Each root key must start with `/`, must not be `/` or end with `/`, and must not contain `//` or `:`. Priorities must be unique, roots must not duplicate, overlap, or nest, and `ConfigurationPrefix` must be a canonical non-root prefix.
+- `OptionsValidationException` means an option is invalid. Check `EndPoints`, `RootKeys`, `ConfigurationPrefix`, `RefreshInterval`, `ConfigurationTimeout`, the read limits, and the TLS settings. Each root key must start with `/`, must not be `/`, must end with `/`, and must not contain `//` or `:`. Priorities must be unique, roots must not duplicate, overlap, or nest, and `ConfigurationPrefix` must be a canonical non-root prefix.
 - TLS validation errors usually mean the endpoint scheme and `UseSsl` disagree, a certificate file is missing or invalid, or the client certificate lacks the `clientAuth` EKU.
 - Connection errors mean etcd is unreachable, the endpoint or port is wrong, or the network blocks the connection.
 - Key format errors mean etcd contains a key that cannot be mapped. See [Key format errors](#key-format-errors) below.
@@ -25,13 +25,13 @@ See [Validation and Startup](Validation-and-Startup) and [Configuration Options]
 
 The initial load fails closed when etcd contains a key that cannot be mapped, and the same error is classified as permanent during polling.
 
-- **Old `:`-hierarchy key.** The message contains `removed ':' hierarchy format`. Rewrite a key such as `/myroot:key` as `/myroot/key`. The mapped configuration key is unchanged.
+- **Old `:`-hierarchy key.** Legacy keys such as `/myroot:key` are outside the `/myroot/` root and are ignored; rewrite them as `/myroot/key` before upgrading. If the loader identifies a returned key as using the removed format, the message contains `removed ':' hierarchy format`. The mapped configuration key is unchanged.
 - **Invalid colon.** `:` is allowed only as a collection index suffix such as `key:0`. `key:foo`, `key:`, `key::0`, `key:-1`, `key:+1`, `key:01`, and `key:1.0` are rejected.
-- **Empty segment.** `//` and a trailing `/` are rejected.
+- **Empty segment.** Returned etcd keys with `//` or a trailing `/` are rejected. Root keys themselves must end with `/`.
 - **Collision.** Two keys under the same root map to the same configuration key. This includes case-only differences (`/myroot/Key` and `/myroot/key`) and structural differences (`/myroot/key:0` and `/myroot/key/0`). Remove or rename one of the keys.
 - **Root overlap.** Two configured roots are duplicates, overlap, or nest case-insensitively, or two roots share a priority. Fix `RootKeys`; this is an options error, not an etcd key error.
 
-Keys outside every root are ignored, not errors. With a root `/myroot`, `/myroot-other/key` is not loaded and cannot collide with `/myroot/key`. The same relative key from different roots is merged by priority, not reported as a collision. See [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity).
+Keys outside every root are ignored, not errors. With a root `/myroot/`, `/myroot-other/key` is not loaded and cannot collide with `/myroot/key`. The same relative key from different roots is merged by priority, not reported as a collision. See [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity).
 
 ## Array or list does not bind
 

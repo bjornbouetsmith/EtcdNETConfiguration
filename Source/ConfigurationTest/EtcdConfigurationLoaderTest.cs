@@ -22,7 +22,7 @@ public class EtcdConfigurationLoaderTest
     private readonly List<RangeCall> _calls = [];
     private readonly EtcdOptions _options = new()
     {
-        RootKeys = [new EtcdRootKey { RootKey = "/configuration", Priority = 0 }],
+        RootKeys = [new EtcdRootKey { RootKey = "/configuration/", Priority = 0 }],
         ConfigurationPrefix = "/configuration",
         RedactConfigurationValues = false
     };
@@ -140,7 +140,7 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_WhenCustomRootKeyUsesOldFormat_ThrowsMigrationError()
     {
-        _options.RootKeys = [new EtcdRootKey { RootKey = "/app", Priority = 0 }];
+        _options.RootKeys = [new EtcdRootKey { RootKey = "/app/", Priority = 0 }];
         EnqueueResponse(("/app:Database:Host", "value"));
 
         var exception = Assert.Throws<EtcdConfigurationKeyFormatException>(
@@ -187,7 +187,7 @@ public class EtcdConfigurationLoaderTest
     [InlineData("/app/Host/")]
     public void LoadConfiguration_WhenCustomRootKeyHasInvalidRelativePath_ThrowsFormatError(string etcdKey)
     {
-        _options.RootKeys = [new EtcdRootKey { RootKey = "/app", Priority = 0 }];
+        _options.RootKeys = [new EtcdRootKey { RootKey = "/app/", Priority = 0 }];
         EnqueueResponse((etcdKey, "value"));
 
         Assert.Throws<EtcdConfigurationKeyFormatException>(
@@ -239,7 +239,7 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_UsesStrictPathBoundary()
     {
-        _options.RootKeys = [new EtcdRootKey { RootKey = "/app", Priority = 0 }];
+        _options.RootKeys = [new EtcdRootKey { RootKey = "/app/", Priority = 0 }];
         EnqueueResponse(
             ("/app/key", "value"),
             ("/application/key", "other"),
@@ -301,15 +301,15 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RootKeys =
         [
-            new EtcdRootKey { RootKey = "/high", Priority = 20 },
-            new EtcdRootKey { RootKey = "/low", Priority = 10 }
+            new EtcdRootKey { RootKey = "/high/", Priority = 20 },
+            new EtcdRootKey { RootKey = "/low/", Priority = 10 }
         ];
         EnqueueResponse();
         EnqueueResponse();
 
         CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
-        Assert.Equal(["/low", "/high"], _calls.Select(call => call.Root));
+        Assert.Equal(["/low/", "/high/"], _calls.Select(call => call.Root));
         _etcdClient.Verify(
             client => client.GetRange(
                 It.IsAny<string>(),
@@ -324,8 +324,8 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RootKeys =
         [
-            new EtcdRootKey { RootKey = "/domain", Priority = 0 },
-            new EtcdRootKey { RootKey = "/machine", Priority = 10 }
+            new EtcdRootKey { RootKey = "/domain/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/machine/", Priority = 10 }
         ];
         EnqueueResponse(
             ("/domain/Logging/Level", "Debug"),
@@ -347,8 +347,8 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RootKeys =
         [
-            new EtcdRootKey { RootKey = "/domain", Priority = 0 },
-            new EtcdRootKey { RootKey = "/machine", Priority = 10 }
+            new EtcdRootKey { RootKey = "/domain/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/machine/", Priority = 10 }
         ];
         EnqueueResponse(("/domain/Kafka/Host", "lower"));
         EnqueueResponse(("/machine/kafka/host", "higher"));
@@ -483,8 +483,8 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RootKeys =
         [
-            new EtcdRootKey { RootKey = "/low", Priority = 0 },
-            new EtcdRootKey { RootKey = "/high", Priority = 10 }
+            new EtcdRootKey { RootKey = "/low/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/high/", Priority = 10 }
         ];
 
         var client = new Mock<IEtcdClient>();
@@ -521,8 +521,8 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RootKeys =
         [
-            new EtcdRootKey { RootKey = "/app", Priority = 10 },
-            new EtcdRootKey { RootKey = "/app/service", Priority = secondPriority }
+            new EtcdRootKey { RootKey = "/app/", Priority = 10 },
+            new EtcdRootKey { RootKey = "/app/service/", Priority = secondPriority }
         ];
 
         Assert.Throws<OptionsValidationException>(
@@ -557,7 +557,7 @@ public class EtcdConfigurationLoaderTest
     [Fact]
     public void LoadConfiguration_WhenRootKeyIsInvalid_FailsBeforeAnyQuery()
     {
-        _options.RootKeys = [new EtcdRootKey { RootKey = "invalid" }];
+        _options.RootKeys = [new EtcdRootKey { RootKey = "invalid/" }];
 
         Assert.Throws<OptionsValidationException>(
             () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
@@ -701,7 +701,7 @@ public class EtcdConfigurationLoaderTest
             _etcdClient.Object,
             new EtcdOptions
             {
-                RootKeys = [new EtcdRootKey { RootKey = "/configuration" }]
+                RootKeys = [new EtcdRootKey { RootKey = "/configuration/" }]
             },
             _logger);
 
@@ -1054,8 +1054,8 @@ public class EtcdConfigurationLoaderTest
     {
         _options.RootKeys =
         [
-            new EtcdRootKey { RootKey = "/low", Priority = 0 },
-            new EtcdRootKey { RootKey = "/high", Priority = 10 }
+            new EtcdRootKey { RootKey = "/low/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/high/", Priority = 10 }
         ];
     }
 
