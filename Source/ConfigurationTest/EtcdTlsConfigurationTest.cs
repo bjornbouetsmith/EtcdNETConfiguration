@@ -44,7 +44,8 @@ public class EtcdTlsConfigurationTest : IntegrationTestBase
         builder.AddEtcdConfiguration(options =>
         {
             options.EndPoints = TlsEtcdServer;
-            options.RootKey = rootKey;
+            options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+            options.ConfigurationPrefix = rootKey;
             options.SslOptions = new SslOptions
             {
                 UseSsl = true,

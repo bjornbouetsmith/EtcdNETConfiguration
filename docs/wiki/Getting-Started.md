@@ -28,7 +28,11 @@ var builder = Host.CreateDefaultBuilder();
 builder.AddEtcdConfiguration(options =>
 {
     options.EndPoints = "http://127.0.0.1:2379";
-    options.RootKey = "/myroot";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }
+    ];
+    options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
 });
 
@@ -46,7 +50,11 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.AddEtcdConfiguration(options =>
 {
     options.EndPoints = "http://127.0.0.1:2379";
-    options.RootKey = "/myroot";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }
+    ];
+    options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
 });
 
@@ -64,9 +72,9 @@ If the initial load fails, the host does not start with empty configuration. See
 
 ## Store configuration in etcd
 
-The `RootKey` option defines the etcd key prefix. Only strict descendants of that prefix are loaded into `IConfiguration`, so `/myroot-other/key` is ignored when `RootKey` is `/myroot`.
+The `RootKeys` option defines the etcd key prefixes. Each root key must end with `/`; the trailing slash scopes the range query, so `/app/` cannot read keys under `/application/`. Only strict descendants of a root are loaded into `IConfiguration`, so `/myroot-other/key` is ignored when a root is `/myroot/`. The `ConfigurationPrefix` option defines the output prefix under which the merged values are exposed.
 
-etcd keys use the native `/` path hierarchy. The library maps `/` to the `:` separator used by `IConfiguration`. With `RootKey = "/myroot"`:
+etcd keys use the native `/` path hierarchy. The library strips each root prefix, merges the remaining relative keys by priority, and maps `/` to the `:` separator used by `IConfiguration`. With a root `/myroot/` and `ConfigurationPrefix = "/myroot"`:
 
 | etcd key | IConfiguration key | Value |
 |-|-|-|
@@ -75,9 +83,27 @@ etcd keys use the native `/` path hierarchy. The library maps `/` to the `:` sep
 | `/myroot/logging/loglevel/default` | `/myroot:logging:loglevel:default` | `Information` |
 | `/myroot/services:0/name` | `/myroot:services:0:name` | `api` |
 
-Collection indices stay attached to their segment with `:`. Do not use `:` as a hierarchy separator. Empty segments, `//`, and trailing `/` are rejected.
+Collection indices stay attached to their segment with `:`. Do not use `:` as a hierarchy separator. Returned etcd keys with empty segments or a trailing `/` are rejected.
 
-The `RootKey` prefix is not stripped from the configuration keys. Use `GetSection("/myroot")` to bind the values under that prefix.
+The root prefix is not retained separately in the configuration keys. Use `GetSection("/myroot")` (or your configured `ConfigurationPrefix`) to bind the values.
+
+When several roots are configured, a higher `Priority` overrides a lower one for the same relative key. Priorities must be unique, each root must end with `/`, and roots must not be duplicates, overlap, or nest:
+
+```csharp
+builder.AddEtcdConfiguration(options =>
+{
+    options.EndPoints = "http://127.0.0.1:2379";
+    options.ConfigurationPrefix = "/configuration";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/domains/example.com/", Priority = 0 },
+        new EtcdRootKey { RootKey = "/machines/web-01/",     Priority = 10 },
+        new EtcdRootKey { RootKey = "/services/checkout/",   Priority = 20 }
+    ];
+});
+```
+
+This merges all three prefixes into the `/configuration` section. See [Configuration Options](Configuration-Options) for the merge example.
 
 You can add the keys with any etcd client. For example, using `etcdctl`:
 
@@ -87,11 +113,11 @@ etcdctl put "/myroot/connectionstrings:1" "databaserver2"
 etcdctl put "/myroot/logging/loglevel/default" "Information"
 ```
 
-The old `:`-hierarchy format is no longer supported. A key such as `/myroot:connectionstrings:0` fails the load with a migration error; rewrite it as `/myroot/connectionstrings:0` before upgrading. See [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity) for the full rules and migration steps.
+The old `:`-hierarchy format is no longer supported. Rewrite a key such as `/myroot:connectionstrings:0` as `/myroot/connectionstrings:0` before upgrading; with the root `/myroot/`, the legacy key is outside the root and is not loaded. See [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity) for the full rules and migration steps.
 
 ## Bind to a strongly typed class
 
-Define a class that matches the key hierarchy below `RootKey`:
+Define a class that matches the key hierarchy below a root:
 
 ```csharp
 public class Configuration
@@ -100,7 +126,7 @@ public class Configuration
 }
 ```
 
-Register it with the options system and the section that represents `RootKey`:
+Register it with the options system and the section named by `ConfigurationPrefix`:
 
 ```csharp
 builder.ConfigureServices((ctx, services) =>

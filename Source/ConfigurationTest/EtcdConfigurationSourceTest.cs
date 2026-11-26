@@ -51,10 +51,20 @@ public class EtcdConfigurationSourceTest
     }
 
     [Fact]
-    public void Build_WithInjectedFactory_UsesConfiguredRootKey()
+    public void Build_WithInjectedFactory_UsesConfiguredRootKeys()
     {
-        var options = new EtcdOptions { RootKey = "/custom-root" };
-        var client = CreateClient(CreateResponse());
+        var options = new EtcdOptions
+        {
+            RootKeys =
+            [
+                new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 },
+                new EtcdRootKey { RootKey = "/other-root/", Priority = 10 }
+            ]
+        };
+        var client = new Mock<IEtcdClient>();
+        client
+            .Setup(GetRangeSetup())
+            .Returns(new RangeResponse());
         var factory = CreateFactory(client);
         var source = new EtcdConfigurationSource(options, new EtcdConfiguration(), factory.Object);
 
@@ -62,11 +72,41 @@ public class EtcdConfigurationSourceTest
 
         client.Verify(
             client => client.GetRange(
-                "/custom-root",
+                "/custom-root/",
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+        client.Verify(
+            client => client.GetRange(
+                "/other-root/",
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void Build_WithInjectedFactory_ExposesValuesUnderConfigurationPrefix()
+    {
+        var options = new EtcdOptions
+        {
+            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/" }],
+            ConfigurationPrefix = "/app"
+        };
+        var client = CreateClient(CreateResponse(
+            ("/custom-root/one", "value-one")));
+        var factory = CreateFactory(client);
+        var sharedConfiguration = new EtcdConfiguration();
+        var source = new EtcdConfigurationSource(options, sharedConfiguration, factory.Object);
+
+        var provider = source.Build(new ConfigurationBuilder());
+        provider.Load();
+
+        Assert.Equal("value-one", sharedConfiguration.Configuration["/app:one"]);
+        Assert.True(provider.TryGet("/app:one", out var value));
+        Assert.Equal("value-one", value);
+        Assert.False(provider.TryGet("/custom-root:one", out _));
     }
 
     [Fact]
@@ -75,7 +115,7 @@ public class EtcdConfigurationSourceTest
         var options = new EtcdOptions
         {
             EndPoints = "http://etcd:2379",
-            RootKey = "/custom-root"
+            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/" }]
         };
         var client = CreateClient(CreateResponse());
         var factory = CreateFactory(client);

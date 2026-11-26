@@ -63,11 +63,7 @@ internal sealed class EtcdTlsOptionsValidator : IValidateOptions<EtcdOptions>
 
     private static void ValidateBasicSettings(EtcdOptions options, List<string> failures, List<Uri> endpoints)
     {
-        var rootKeyValidation = EtcdOptions.ValidateRootKey(options.RootKey);
-        if (rootKeyValidation?.ErrorMessage is { } rootKeyError)
-        {
-            failures.Add(rootKeyError);
-        }
+        failures.AddRange(EtcdRootKeyValidator.Validate(options));
 
         if (endpoints.Count > 1 &&
             endpoints.Select(endpoint => endpoint.Scheme).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)

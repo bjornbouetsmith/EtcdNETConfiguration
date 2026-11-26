@@ -33,17 +33,24 @@ TLS startup fails when any of the following is true:
 - A key path or password is set without a certificate path.
 - CA, certificate, or key files are missing, corrupt, or cannot be parsed.
 - A PKCS#12 password is wrong, a PEM key does not match its certificate, or a client certificate has no private key, is expired, or lacks the `clientAuth` EKU.
-- `RootKey` is not a canonical path: it is `/`, does not start with `/`, ends with `/`, or contains `//` or `:`.
+- `RootKeys` is missing or empty.
+- A root key is not a canonical path: it is `/`, does not start with `/`, does not end with `/`, or contains `//` or `:`.
+- Two roots have the same `Priority`.
+- Roots are duplicates, or they overlap or nest case-insensitively (`/app/` and `/APP/service/`).
+- `ConfigurationPrefix` is not a canonical non-root path.
+
+Validation also runs at the start of every configuration load, before any etcd query, so an `OptionsValidationException` is raised even when the loader is constructed directly.
 
 ## Key format validation
 
-After reading etcd, the loader validates and maps every key under `RootKey` before it becomes configuration:
+After reading etcd, the loader validates and maps every key under each configured root before it becomes configuration:
 
-- Old `:`-hierarchy keys such as `/myroot:key` are rejected with a migration error. Use `/myroot/key`.
+- Old `:`-hierarchy keys are not loaded. Legacy siblings such as `/myroot:key` are outside the `/myroot/` root and are ignored; rewrite them as `/myroot/key`.
 - `:` is allowed only as a collection index suffix such as `key:0`; other uses are rejected.
-- Empty segments, `//`, and trailing `/` are rejected.
-- Two in-scope keys that map to the same configuration key are a collision. Collision detection is case-insensitive and applies only to keys under the same `RootKey`.
-- Keys outside the `RootKey` path boundary are ignored, not errors.
+- Returned etcd keys with empty segments, `//`, or a trailing `/` are rejected. Root keys themselves must end with `/`.
+- Two in-scope keys under the **same** root that map to the same configuration key are a collision. Collision detection is case-insensitive.
+- The same relative key under **different** roots is merged by priority, not treated as a collision. The higher `Priority` wins.
+- Keys outside a root's path boundary are ignored, not errors.
 
 At startup these errors propagate and the host does not start. During polling they are permanent failures and count toward `MaximumConsecutivePermanentFailures`. See [Key Format and Case Sensitivity](Key-Format-and-Case-Sensitivity).
 
@@ -97,7 +104,7 @@ The caller-supplied `etcdClientFactory` is used for both the initial load and th
 
 If the host fails to start, check the exception message first:
 
-- `OptionsValidationException` usually means an invalid endpoint, root key, interval, or timeout.
+- `OptionsValidationException` usually means an invalid endpoint, root key, configuration prefix, interval, or timeout.
 - TLS validation errors point to a certificate, CA, key, or scheme mismatch.
 - Connection errors mean etcd is unreachable or the endpoint/port is wrong.
 

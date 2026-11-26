@@ -92,6 +92,8 @@ public class EtcdKeyMapperTest
     [InlineData("/Prefix/key", "/prefix", false)]
     [InlineData("/prefix/key", " /prefix ", true)]
     [InlineData("/prefix/key", "/prefix/", true)]
+    [InlineData("/application/key", "/app/", false)]
+    [InlineData("/app/key", "/application/", false)]
     public void IsInScope_UsesThePathBoundary(string etcdKey, string rootKey, bool expected)
     {
         Assert.Equal(expected, EtcdKeyMapper.IsInScope(etcdKey, rootKey));
@@ -103,20 +105,21 @@ public class EtcdKeyMapperTest
     [InlineData("/prefix/key", "/prefix", false)]
     [InlineData("/prefix-other:key", "/prefix", false)]
     [InlineData("/prefix:key", " /prefix ", true)]
+    [InlineData("/prefix:key", "/prefix/", true)]
     public void IsOldFormat_DetectsTheRemovedHierarchy(string etcdKey, string rootKey, bool expected)
     {
         Assert.Equal(expected, EtcdKeyMapper.IsOldFormat(etcdKey, rootKey));
     }
 
     [Theory]
-    [InlineData("/prefix", "/prefix")]
-    [InlineData(" /prefix ", "/prefix")]
-    [InlineData("/prefix/", "/prefix")]
-    [InlineData("//prefix", "/prefix")]
-    [InlineData("prefix", "/prefix")]
+    [InlineData("/prefix", "/prefix/")]
+    [InlineData(" /prefix ", "/prefix/")]
+    [InlineData("/prefix/", "/prefix/")]
+    [InlineData("//prefix", "/prefix/")]
+    [InlineData("prefix", "/prefix/")]
+    [InlineData("/", "/")]
     [InlineData("", "/")]
-    [InlineData(null, "/")]
-    public void NormalizeRootKey_ReturnsASingleLeadingSlash(string? rootKey, string expected)
+    public void NormalizeRootKey_ReturnsOneLeadingAndTrailingSlash(string rootKey, string expected)
     {
         Assert.Equal(expected, EtcdKeyMapper.NormalizeRootKey(rootKey));
     }

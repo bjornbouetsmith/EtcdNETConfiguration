@@ -140,7 +140,8 @@ public class EtcdConfigurationTest : IntegrationTestBase
             builder.AddEtcdConfiguration(options =>
             {
                 options.EndPoints = _etcdServer;
-                options.RootKey = rootKey;
+                options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+                options.ConfigurationPrefix = rootKey;
                 options.RefreshInterval = TimeSpan.FromMilliseconds(100);
             });
 
@@ -197,7 +198,8 @@ public class EtcdConfigurationTest : IntegrationTestBase
             builder.AddEtcdConfiguration(options =>
             {
                 options.EndPoints = _etcdServer;
-                options.RootKey = rootKey;
+                options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+                options.ConfigurationPrefix = rootKey;
                 options.RefreshInterval = TimeSpan.Zero;
             });
                         
@@ -246,7 +248,8 @@ public class EtcdConfigurationTest : IntegrationTestBase
             builder.AddEtcdConfiguration(options =>
             {
                 options.EndPoints = _etcdServer;
-                options.RootKey = rootKey;
+                options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+                options.ConfigurationPrefix = rootKey;
                 options.RefreshInterval = TimeSpan.Zero;
             });
 
@@ -275,12 +278,14 @@ public class EtcdConfigurationTest : IntegrationTestBase
         var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
         Assert.True(containerUp);
 
-        var rootKey = $"/scope-{Guid.NewGuid():N}";
-        var otherRootKey = $"{rootKey}-other";
+        var rootKey = $"/app-{Guid.NewGuid():N}";
+        var siblingRootKey = $"{rootKey}lication";
+        var legacyKey = $"{rootKey}:legacy";
 
         using var client = CreateClient();
         await client.PutAsync($"{rootKey}/included", "included-value", cancellationToken: TestContext.Current.CancellationToken);
-        await client.PutAsync($"{otherRootKey}/excluded", "excluded-value", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{siblingRootKey}/excluded", "excluded-value", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync(legacyKey, "legacy-value", cancellationToken: TestContext.Current.CancellationToken);
 
         try
         {
@@ -291,7 +296,8 @@ public class EtcdConfigurationTest : IntegrationTestBase
             builder.AddEtcdConfiguration(options =>
             {
                 options.EndPoints = _etcdServer;
-                options.RootKey = rootKey;
+                options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+                options.ConfigurationPrefix = rootKey;
                 options.RefreshInterval = TimeSpan.Zero;
             });
 
@@ -301,14 +307,129 @@ public class EtcdConfigurationTest : IntegrationTestBase
 
             var configuration = host.Services.GetRequiredService<IConfiguration>();
             Assert.Equal("included-value", configuration[$"{rootKey}:included"]);
-            Assert.Null(configuration[$"{otherRootKey}:excluded"]);
+            Assert.Null(configuration[$"{siblingRootKey}:excluded"]);
+            Assert.Null(configuration[$"{rootKey}:legacy"]);
 
             await host.StopAsync(TestContext.Current.CancellationToken);
         }
         finally
         {
             await client.DeleteRangeAsync($"{rootKey}/included", cancellationToken: TestContext.Current.CancellationToken);
-            await client.DeleteRangeAsync($"{otherRootKey}/excluded", cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync($"{siblingRootKey}/excluded", cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync(legacyKey, cancellationToken: TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact, Trait("Category", "Integration")]
+    public async Task MultipleRootsMergeByPriorityAndFallBackWhenTheWinnerIsDeleted()
+    {
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
+        Assert.True(containerUp);
+
+        var domainRoot = $"/domain-{Guid.NewGuid():N}";
+        var machineRoot = $"/machine-{Guid.NewGuid():N}";
+        var serviceRoot = $"/service-{Guid.NewGuid():N}";
+        var configurationPrefix = $"/merged-{Guid.NewGuid():N}";
+
+        using var client = CreateClient();
+        await client.PutAsync($"{domainRoot}/Logging/Level", "Debug", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{domainRoot}/Database/Name", "domain-db", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{machineRoot}/Logging/Level", "Warning", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{machineRoot}/Kafka/BootStrapServers:0", "host-1", cancellationToken: TestContext.Current.CancellationToken);
+        await client.PutAsync($"{serviceRoot}/Database/Name", "checkout", cancellationToken: TestContext.Current.CancellationToken);
+
+        try
+        {
+            var builder = Host.CreateApplicationBuilder();
+            builder.Logging.ClearProviders();
+            builder.Logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
+
+            builder.AddEtcdConfiguration(options =>
+            {
+                options.EndPoints = _etcdServer;
+                options.RootKeys =
+                [
+                    new EtcdRootKey { RootKey = domainRoot + "/", Priority = 0 },
+                    new EtcdRootKey { RootKey = machineRoot + "/", Priority = 10 },
+                    new EtcdRootKey { RootKey = serviceRoot + "/", Priority = 20 }
+                ];
+                options.ConfigurationPrefix = configurationPrefix;
+                options.RefreshInterval = TimeSpan.FromMilliseconds(100);
+            });
+
+            using var host = builder.Build();
+            await host.StartAsync(TestContext.Current.CancellationToken);
+
+            var configuration = host.Services.GetRequiredService<IConfiguration>();
+
+            Assert.Equal("Warning", configuration[$"{configurationPrefix}:Logging:Level"]);
+            Assert.Equal("checkout", configuration[$"{configurationPrefix}:Database:Name"]);
+            Assert.Equal("host-1", configuration[$"{configurationPrefix}:Kafka:BootStrapServers:0"]);
+
+            // A higher-priority change is picked up by polling.
+            await client.PutAsync(
+                $"{machineRoot}/Logging/Level",
+                "Error",
+                cancellationToken: TestContext.Current.CancellationToken);
+            await TestWait.UntilAsync(
+                () => configuration[$"{configurationPrefix}:Logging:Level"] == "Error",
+                "Expected the higher-priority value to win after polling.");
+
+            // Removing the winner falls back to the next priority.
+            await client.DeleteAsync(
+                $"{serviceRoot}/Database/Name",
+                cancellationToken: TestContext.Current.CancellationToken);
+            await TestWait.UntilAsync(
+                () => configuration[$"{configurationPrefix}:Database:Name"] == "domain-db",
+                "Expected the lower-priority value to become effective after deletion.");
+
+            // Deleting every copy removes the effective key.
+            await client.DeleteAsync(
+                $"{machineRoot}/Kafka/BootStrapServers:0",
+                cancellationToken: TestContext.Current.CancellationToken);
+            await TestWait.UntilAsync(
+                () => configuration[$"{configurationPrefix}:Kafka:BootStrapServers:0"] is null,
+                "Expected the key to disappear when no root provides it.");
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await client.DeleteRangeAsync(domainRoot, cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync(machineRoot, cancellationToken: TestContext.Current.CancellationToken);
+            await client.DeleteRangeAsync(serviceRoot, cancellationToken: TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact, Trait("Category", "Integration")]
+    public async Task InvalidKeyFormatInsideARootFailsTheInitialLoad()
+    {
+        var containerUp = await StartEtcdContainer(TestContext.Current.CancellationToken);
+        Assert.True(containerUp);
+
+        var rootKey = $"/invalid-format-{Guid.NewGuid():N}";
+        var invalidKey = $"{rootKey}/Database:Host";
+        using var client = CreateClient();
+        await client.PutAsync(invalidKey, "localhost", cancellationToken: TestContext.Current.CancellationToken);
+
+        try
+        {
+            var builder = Host.CreateApplicationBuilder();
+            builder.Logging.ClearProviders();
+            builder.Logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
+
+            Assert.Throws<EtcdConfigurationKeyFormatException>(() =>
+                builder.AddEtcdConfiguration(options =>
+                {
+                    options.EndPoints = _etcdServer;
+                    options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+                    options.ConfigurationPrefix = rootKey;
+                    options.RefreshInterval = TimeSpan.Zero;
+                }));
+        }
+        finally
+        {
+            await client.DeleteRangeAsync(invalidKey, cancellationToken: TestContext.Current.CancellationToken);
         }
     }
 

@@ -1,6 +1,6 @@
 # Refresh and Polling
 
-Configuration refresh is poll-based. The library periodically reads all keys under `RootKey`, compares the result with the previous snapshot, and publishes only when something changed.
+Configuration refresh is poll-based. The library periodically reads all keys under every configured root, merges the results by priority, compares the merged snapshot with the previous one, and publishes only when something changed.
 
 ## How the poller works
 
@@ -9,7 +9,7 @@ Configuration refresh is poll-based. The library periodically reads all keys und
 1. The initial configuration has already been loaded synchronously by `EtcdConfigurationSource`.
 2. The poller starts a timer and runs a first poll immediately.
 3. After each run, the timer is re-armed for `RefreshInterval`.
-4. If the loader detects added, changed, or removed keys, the poller publishes the new snapshot.
+4. If the loader detects added, changed, or removed keys in the merged snapshot, the poller publishes the new snapshot.
 5. Publishing raises `ConfigurationChanged`, and the configuration provider calls `OnReload()` so `IConfiguration` and `IOptions`-bound settings are updated.
 
 If nothing changed, the poller does not publish or log a change.
@@ -46,20 +46,22 @@ Because polling is disabled, changes made in etcd after startup will not be refl
 
 ## Change detection
 
-`EtcdConfigurationLoader` keeps the previous snapshot and compares it with each new read. Comparisons use the mapped configuration keys and are case-insensitive, matching `IConfiguration` lookups:
+`EtcdConfigurationLoader` keeps the previous merged snapshot and compares it with each new read. Comparisons use the final configuration keys and are case-insensitive, matching `IConfiguration` lookups:
 
+- Roots are queried in ascending priority order, and the highest-priority value wins for each relative key.
 - New keys are logged as added.
 - Changed values are logged with the previous and new value.
 - Missing keys are logged as removed.
 - A key that changes only by case, with the same value, does not count as a change.
+- A change to a shadowed lower-priority value does not count as a change while a higher-priority value is effective.
 
 When `RedactConfigurationValues` is `true` (the default), values are replaced with `***` in the logs. Keys in the logs are mapped configuration keys such as `/myroot:database:host`, not the raw etcd path.
 
 ## Timeouts and errors
 
-`ConfigurationTimeout` limits individual etcd calls. The default is one second; the supported range is one second to 60 seconds. Polls are also cancelled when the host stops, so shutdown is not blocked by a slow etcd read.
+`ConfigurationTimeout` limits one configuration load. Every root query shares the same deadline, and the budget is not reset per root. The default is one second; the supported range is one second to one hour. Polls are also cancelled when the host stops, so shutdown is not blocked by a slow etcd read.
 
-A single poll is limited by `MaximumConfigurationKeyCount` (default 10,000) and `MaximumConfigurationSizeBytes` (default 8 MiB). A read that exceeds either limit fails instead of allocating an unbounded dictionary.
+A single poll is limited by `MaximumConfigurationKeyCount` (default 10,000) and `MaximumConfigurationSizeBytes` (default 8 MiB). The limits are cumulative across every root. Every key returned by etcd counts, including keys outside a root's scope, so a broad root cannot bypass the limit. A read that exceeds either limit fails instead of allocating an unbounded dictionary.
 
 The poller distinguishes transient failures from permanent ones:
 

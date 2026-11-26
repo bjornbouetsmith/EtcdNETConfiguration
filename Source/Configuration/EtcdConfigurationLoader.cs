@@ -1,5 +1,8 @@
 ﻿using dotnet_etcd.interfaces;
+using Etcdserverpb;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Mvccpb;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -24,8 +27,9 @@ public interface IEtcdConfigurationLoader
 /// Contains both the current configuration values and a flag indicating if any changes occurred.
 /// </summary>
 /// <param name="Configuration">
-/// Current key-value pairs from etcd, keyed by the mapped configuration key
-/// (for example <c>/prefix:key:subkey</c>) rather than the raw etcd path.
+/// Current key-value pairs from etcd, keyed by the mapped configuration key under
+/// <see cref="EtcdOptions.ConfigurationPrefix"/> (for example <c>/configuration:key:subkey</c>)
+/// rather than the raw etcd path.
 /// </param>
 /// <param name="ChangesPresent">True if any keys were added, changed, or removed since the last load.</param>
 public readonly record struct ConfigurationData(IReadOnlyDictionary<string, string?> Configuration, bool ChangesPresent);
@@ -43,6 +47,8 @@ internal sealed class EtcdConfigurationLimitExceededException : InvalidOperation
 
 /// <summary>
 /// Loads configuration data from etcd and compares it with previous values to detect changes.
+/// Every configured root is queried within one timeout budget and the results are merged by
+/// priority before the final snapshot is compared.
 /// </summary>
 public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
 {
@@ -99,78 +105,166 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     /// <inheritdoc/>
     public ConfigurationData LoadConfiguration(CancellationToken cancellationToken = default)
     {
-        // Configuration keys are case-insensitive, matching IConfiguration lookups. Using the
-        // same comparer here makes collision detection and change detection consistent.
-        var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        var sourceKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var rootKey = EtcdKeyMapper.NormalizeRootKey(_options.RootKey);
-        var deadLine = _timeProvider.GetUtcNow().Add(_options.ConfigurationTimeout);
-        var response = _etcdClient.GetRange(
-            rootKey,
-            deadline: deadLine.UtcDateTime,
-            cancellationToken: cancellationToken);
-
-        var totalSize = 0L;
-        var processedKeyCount = 0;
-        foreach (var kv in response.Kvs)
+        var failures = EtcdRootKeyValidator.Validate(_options);
+        if (failures.Count > 0)
         {
-            // Count every returned key so out-of-scope keys and collisions cannot bypass the limit.
-            if (processedKeyCount >= _options.MaximumConfigurationKeyCount)
-            {
-                throw new EtcdConfigurationLimitExceededException(
-                    $"The etcd response exceeded MaximumConfigurationKeyCount ({_options.MaximumConfigurationKeyCount}). " +
-                    "Narrow RootKey or raise the limit explicitly.");
-            }
-
-            processedKeyCount++;
-
-            totalSize += (long)kv.Key.Length + kv.Value.Length;
-            if (totalSize > _options.MaximumConfigurationSizeBytes)
-            {
-                throw new EtcdConfigurationLimitExceededException(
-                    $"The etcd response exceeded MaximumConfigurationSizeBytes ({_options.MaximumConfigurationSizeBytes}). " +
-                    "Narrow RootKey or raise the limit explicitly.");
-            }
-
-            var etcdKey = kv.Key.ToStringUtf8();
-            var value = kv.Value.ToStringUtf8();
-
-            if (!TryMapKey(etcdKey, rootKey, out var key))
-            {
-                continue;
-            }
-
-            if (data.ContainsKey(key))
-            {
-                throw new EtcdConfigurationKeyCollisionException(
-                    $"The etcd keys '{sourceKeys[key]}' and '{etcdKey}' both map to the configuration key '{key}'. " +
-                    "Remove or rename one of the keys.");
-            }
-
-            data[key] = value;
-            sourceKeys[key] = etcdKey;
+            throw new OptionsValidationException(
+                nameof(EtcdOptions),
+                typeof(EtcdOptions),
+                failures);
         }
+
+        var roots = new List<EtcdRootKey>(_options.RootKeys);
+        roots.Sort(static (left, right) => left.Priority.CompareTo(right.Priority));
+
+        // One budget per configuration load. Every root query shares the same deadline.
+        var deadLine = _timeProvider.GetUtcNow().Add(_options.ConfigurationTimeout);
+        var configurationPrefix = _options.ConfigurationPrefix.Trim();
+
+        // Relative configuration keys are case-insensitive, matching IConfiguration lookups.
+        var merged = new Dictionary<string, MergedEntry>(StringComparer.OrdinalIgnoreCase);
+
+        var totalSize = 0;
+        var processedKeyCount = 0;
+
+        foreach (var root in roots)
+        {
+            var normalizedRootKey = EtcdKeyMapper.NormalizeRootKey(root.RootKey);
+            var response = _etcdClient.GetRange(
+                normalizedRootKey,
+                deadline: deadLine.UtcDateTime,
+                cancellationToken: cancellationToken);
+
+            MergeRootResponse(
+                response,
+                root,
+                configurationPrefix,
+                merged,
+                ref totalSize,
+                ref processedKeyCount);
+        }
+
+        var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in merged.Values)
+        {
+            data[configurationPrefix + entry.RelativeKey] = entry.Value;
+        }
+
         var changes = LogChangedConfigurationKeys(data);
         _previousVersion = data;
         return new(data, changes);
     }
 
     /// <summary>
-    /// Validates and maps an etcd key. Returns false when the key is outside the configured root
-    /// scope and should be skipped.
+    /// Merges the keys returned for one root. Collision detection is scoped to that root; the
+    /// same relative key under a different root is resolved by priority instead.
+    /// </summary>
+    private void MergeRootResponse(
+        RangeResponse response,
+        EtcdRootKey root,
+        string configurationPrefix,
+        Dictionary<string, MergedEntry> merged,
+        ref int totalSize,
+        ref int processedKeyCount)
+    {
+        var normalizedRootKey = EtcdKeyMapper.NormalizeRootKey(root.RootKey);
+        var rootKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var kv in response.Kvs)
+        {
+            TrackResponseEntry(kv, ref totalSize, ref processedKeyCount);
+
+            var etcdKey = kv.Key.ToStringUtf8();
+            var value = kv.Value.ToStringUtf8();
+
+            if (!TryMapKey(etcdKey, normalizedRootKey, out var relativeKey))
+            {
+                continue;
+            }
+
+            AddMergedEntry(
+                etcdKey,
+                value,
+                relativeKey,
+                root,
+                configurationPrefix,
+                rootKeys,
+                merged);
+        }
+    }
+
+    /// <summary>
+    /// Counts every returned key so out-of-scope keys and collisions cannot bypass the limits.
+    /// </summary>
+    private void TrackResponseEntry(KeyValue kv, ref int totalSize, ref int processedKeyCount)
+    {
+        if (processedKeyCount >= _options.MaximumConfigurationKeyCount)
+        {
+            throw new EtcdConfigurationLimitExceededException(
+                $"The etcd response exceeded MaximumConfigurationKeyCount ({_options.MaximumConfigurationKeyCount}). " +
+                "Narrow RootKeys or raise the limit explicitly.");
+        }
+
+        processedKeyCount++;
+
+        totalSize += kv.Key.Length + kv.Value.Length;
+        if (totalSize > _options.MaximumConfigurationSizeBytes)
+        {
+            throw new EtcdConfigurationLimitExceededException(
+                $"The etcd response exceeded MaximumConfigurationSizeBytes ({_options.MaximumConfigurationSizeBytes}). " +
+                "Narrow RootKeys or raise the limit explicitly.");
+        }
+    }
+
+    private void AddMergedEntry(
+        string etcdKey,
+        string value,
+        string relativeKey,
+        EtcdRootKey root,
+        string configurationPrefix,
+        Dictionary<string, string> rootKeys,
+        Dictionary<string, MergedEntry> merged)
+    {
+        if (rootKeys.TryGetValue(relativeKey, out var existingEtcdKey))
+        {
+            throw new EtcdConfigurationKeyCollisionException(
+                $"The etcd keys '{existingEtcdKey}' and '{etcdKey}' under root " +
+                $"'{EtcdKeyMapper.NormalizeRootKey(root.RootKey)}' " +
+                $"both map to the relative configuration key '{relativeKey}' " +
+                $"('{configurationPrefix}{relativeKey}'). Remove or rename one of the keys.");
+        }
+
+        rootKeys[relativeKey] = etcdKey;
+
+        if (merged.TryGetValue(relativeKey, out var existing) &&
+            existing.Root.Priority < root.Priority)
+        {
+            _logger.LogDebug(
+                "Configuration key {Key} from root {WinningRoot} overrides root {ShadowedRoot}",
+                relativeKey,
+                EtcdKeyMapper.NormalizeRootKey(root.RootKey),
+                EtcdKeyMapper.NormalizeRootKey(existing.Root.RootKey));
+        }
+
+        merged[relativeKey] = new MergedEntry(relativeKey, value, root);
+    }
+
+    /// <summary>
+    /// Validates and maps an etcd key to a relative configuration key. Returns false when the
+    /// key is outside the configured root scope and should be skipped.
     /// </summary>
     /// <param name="etcdKey">The raw etcd key.</param>
     /// <param name="rootKey">The normalized root key.</param>
-    /// <param name="configurationKey">The mapped configuration key when the method returns true.</param>
+    /// <param name="relativeConfigurationKey">The relative configuration key when the method returns true.</param>
     /// <returns>True when the key is in scope and valid; false when it is out of scope.</returns>
     /// <exception cref="EtcdConfigurationKeyFormatException">The key uses the removed format or is invalid.</exception>
-    private bool TryMapKey(string etcdKey, string rootKey, out string configurationKey)
+    private bool TryMapKey(string etcdKey, string rootKey, out string relativeConfigurationKey)
     {
         if (EtcdKeyMapper.IsOldFormat(etcdKey, rootKey))
         {
             throw new EtcdConfigurationKeyFormatException(
                 $"The etcd key '{etcdKey}' uses the removed ':' hierarchy format. " +
-                $"Rewrite it using '/' path segments, for example '{rootKey}/key/subkey'. " +
+                $"Rewrite it using '/' path segments, for example '{rootKey}key/subkey'. " +
                 "Configuration keys are still exposed with ':' separators.");
         }
 
@@ -180,18 +274,18 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
                 "Skipping etcd key {Key} because it is not a descendant of RootKey {RootKey}",
                 etcdKey,
                 rootKey);
-            configurationKey = string.Empty;
+            relativeConfigurationKey = string.Empty;
             return false;
         }
 
-        configurationKey = EtcdKeyMapper.ToConfigurationKey(etcdKey);
+        relativeConfigurationKey = EtcdKeyMapper.ToRelativeConfigurationKey(etcdKey, rootKey);
         return true;
     }
 
     /// <summary>
     /// Logs configuration key changes and returns whether any additions, modifications, or deletions occurred.
     /// </summary>
-    /// <param name="newValues">The current values from etcd.</param>
+    /// <param name="newValues">The current merged values from etcd.</param>
     /// <returns>True if any keys were added, changed, or removed; false otherwise.</returns>
     private bool LogChangedConfigurationKeys(Dictionary<string, string?> newValues)
     {
@@ -247,6 +341,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     /// <summary>
     /// Redacts or returns the given value for logging. Returns "***" if redact mode is enabled.
     /// </summary>
+    /// <param name="key">The configuration key, used to detect secret-like names.</param>
     /// <param name="value">The value to conditionally redact.</param>
     /// <returns>The original value or "***" if redaction is enabled.</returns>
     private string? GetValueForLog(string key, string? value) =>
@@ -264,4 +359,9 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
 
         return false;
     }
+
+    /// <summary>
+    /// A merged relative configuration key together with the value and root that won by priority.
+    /// </summary>
+    private readonly record struct MergedEntry(string RelativeKey, string Value, EtcdRootKey Root);
 }

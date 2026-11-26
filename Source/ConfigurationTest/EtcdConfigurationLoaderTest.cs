@@ -3,11 +3,13 @@ using Etcdserverpb;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Mvccpb;
 using ROOT.Etcd.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace ROOT.Etcd.ConfigurationTest;
@@ -17,9 +19,11 @@ public class EtcdConfigurationLoaderTest
     private readonly Mock<IEtcdClient> _etcdClient = new();
     private readonly RecordingLogger<EtcdConfigurationLoader> _logger = new();
     private readonly Queue<RangeResponse> _responses = new();
+    private readonly List<RangeCall> _calls = [];
     private readonly EtcdOptions _options = new()
     {
-        RootKey = "/configuration",
+        RootKeys = [new EtcdRootKey { RootKey = "/configuration/", Priority = 0 }],
+        ConfigurationPrefix = "/configuration",
         RedactConfigurationValues = false
     };
     private DateTime? _lastDeadline;
@@ -34,8 +38,9 @@ public class EtcdConfigurationLoaderTest
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
             .Callback<string, Metadata, DateTime?, CancellationToken>(
-                (_, _, deadline, cancellationToken) =>
+                (root, _, deadline, cancellationToken) =>
                 {
+                    _calls.Add(new RangeCall(root, deadline));
                     _lastDeadline = deadline;
                     _lastCancellationToken = cancellationToken;
                 })
@@ -132,6 +137,19 @@ public class EtcdConfigurationLoaderTest
         Assert.Contains("/configuration/key", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void LoadConfiguration_WhenCustomRootKeyUsesOldFormat_ThrowsMigrationError()
+    {
+        _options.RootKeys = [new EtcdRootKey { RootKey = "/app/", Priority = 0 }];
+        EnqueueResponse(("/app:Database:Host", "value"));
+
+        var exception = Assert.Throws<EtcdConfigurationKeyFormatException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("/app", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("removed ':' hierarchy format", exception.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("/configuration/key:foo")]
     [InlineData("/configuration/key:")]
@@ -163,6 +181,19 @@ public class EtcdConfigurationLoaderTest
         Assert.Contains("empty path segment", exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("/app/Database:Host")]
+    [InlineData("/app//Host")]
+    [InlineData("/app/Host/")]
+    public void LoadConfiguration_WhenCustomRootKeyHasInvalidRelativePath_ThrowsFormatError(string etcdKey)
+    {
+        _options.RootKeys = [new EtcdRootKey { RootKey = "/app/", Priority = 0 }];
+        EnqueueResponse((etcdKey, "value"));
+
+        Assert.Throws<EtcdConfigurationKeyFormatException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public void LoadConfiguration_WhenKeysDifferOnlyByCase_ThrowsCollision()
     {
@@ -176,6 +207,7 @@ public class EtcdConfigurationLoaderTest
         Assert.Contains("/configuration/Key", exception.Message, StringComparison.Ordinal);
         Assert.Contains("/configuration/key", exception.Message, StringComparison.Ordinal);
         Assert.Contains("/configuration:key", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(":key", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -202,6 +234,22 @@ public class EtcdConfigurationLoaderTest
 
         Assert.Equal("value", result.Configuration["/configuration:key"]);
         Assert.Single(result.Configuration);
+    }
+
+    [Fact]
+    public void LoadConfiguration_UsesStrictPathBoundary()
+    {
+        _options.RootKeys = [new EtcdRootKey { RootKey = "/app/", Priority = 0 }];
+        EnqueueResponse(
+            ("/app/key", "value"),
+            ("/application/key", "other"),
+            ("/app", "root"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        var value = Assert.Single(result.Configuration);
+        Assert.Equal("/configuration:key", value.Key);
+        Assert.Equal("value", value.Value);
     }
 
     [Fact]
@@ -249,20 +297,278 @@ public class EtcdConfigurationLoaderTest
     }
 
     [Fact]
-    public void LoadConfiguration_UsesConfiguredRootKey()
+    public void LoadConfiguration_UsesConfiguredRootKeysInPriorityOrder()
     {
-        _options.RootKey = "/custom-root";
-        EnqueueResponse(("/custom-root/key", "value"));
+        _options.RootKeys =
+        [
+            new EtcdRootKey { RootKey = "/high/", Priority = 20 },
+            new EtcdRootKey { RootKey = "/low/", Priority = 10 }
+        ];
+        EnqueueResponse();
+        EnqueueResponse();
 
         CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
 
+        Assert.Equal(["/low/", "/high/"], _calls.Select(call => call.Root));
         _etcdClient.Verify(
             client => client.GetRange(
-                "/custom-root",
+                It.IsAny<string>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),
-            Times.Once);
+            Times.Exactly(2));
+    }
+
+    [Fact]
+    public void LoadConfiguration_MergesMultipleRootsAndHighestPriorityWins()
+    {
+        _options.RootKeys =
+        [
+            new EtcdRootKey { RootKey = "/domain/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/machine/", Priority = 10 }
+        ];
+        EnqueueResponse(
+            ("/domain/Logging/Level", "Debug"),
+            ("/domain/Database/Name", "domain-db"));
+        EnqueueResponse(
+            ("/machine/Logging/Level", "Warning"),
+            ("/machine/Kafka/BootStrapServers:0", "host-1"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, result.Configuration.Count);
+        Assert.Equal("Warning", result.Configuration["/configuration:Logging:Level"]);
+        Assert.Equal("domain-db", result.Configuration["/configuration:Database:Name"]);
+        Assert.Equal("host-1", result.Configuration["/configuration:Kafka:BootStrapServers:0"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_MergesCaseVariantRelativeKeysAcrossRootsByPriority()
+    {
+        _options.RootKeys =
+        [
+            new EtcdRootKey { RootKey = "/domain/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/machine/", Priority = 10 }
+        ];
+        EnqueueResponse(("/domain/Kafka/Host", "lower"));
+        EnqueueResponse(("/machine/kafka/host", "higher"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        var value = Assert.Single(result.Configuration);
+        Assert.Equal("/configuration:kafka:host", value.Key);
+        Assert.Equal("higher", value.Value);
+    }
+
+    [Fact]
+    public void LoadConfiguration_UsesConfigurationPrefixForFinalKeys()
+    {
+        _options.ConfigurationPrefix = "/app";
+        EnqueueResponse(
+            ("/configuration/database/host", "localhost"),
+            ("/configuration/Kafka/BootStrapServers:0", "host-1"));
+
+        var result = CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.Equal("localhost", result.Configuration["/app:database:host"]);
+        Assert.Equal("host-1", result.Configuration["/app:Kafka:BootStrapServers:0"]);
+        Assert.DoesNotContain(
+            result.Configuration,
+            kv => kv.Key.StartsWith("/configuration", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenLowerPriorityShadowedValueChanges_ReportsNoChanges()
+    {
+        ConfigureTwoRoots();
+        EnqueueResponse(("/low/Shared", "low"));
+        EnqueueResponse(("/high/Shared", "high"));
+
+        var loader = CreateLoader();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        _logger.Clear();
+
+        EnqueueResponse(("/low/Shared", "changed-low"));
+        EnqueueResponse(("/high/Shared", "high"));
+
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.False(result.ChangesPresent);
+        Assert.Equal("high", result.Configuration["/configuration:Shared"]);
+        Assert.DoesNotContain(_logger.Entries, entry => entry.Level == LogLevel.Information);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenHigherPriorityValueChanges_ReportsChange()
+    {
+        ConfigureTwoRoots();
+        EnqueueResponse(("/low/Shared", "low"));
+        EnqueueResponse(("/high/Shared", "high"));
+
+        var loader = CreateLoader();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        _logger.Clear();
+
+        EnqueueResponse(("/low/Shared", "low"));
+        EnqueueResponse(("/high/Shared", "changed-high"));
+
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.True(result.ChangesPresent);
+        Assert.Equal("changed-high", result.Configuration["/configuration:Shared"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenWinningKeyIsRemovedWithADifferentFallback_ReportsChange()
+    {
+        ConfigureTwoRoots();
+        EnqueueResponse(("/low/Shared", "low"));
+        EnqueueResponse(("/high/Shared", "high"));
+
+        var loader = CreateLoader();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        _logger.Clear();
+
+        EnqueueResponse(("/low/Shared", "low"));
+        EnqueueResponse();
+
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.True(result.ChangesPresent);
+        Assert.Equal("low", result.Configuration["/configuration:Shared"]);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenWinningKeyIsRemovedWithAnEqualFallback_ReportsNoChanges()
+    {
+        ConfigureTwoRoots();
+        EnqueueResponse(("/low/Shared", "same"));
+        EnqueueResponse(("/high/Shared", "same"));
+
+        var loader = CreateLoader();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        _logger.Clear();
+
+        EnqueueResponse(("/low/Shared", "same"));
+        EnqueueResponse();
+
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.False(result.ChangesPresent);
+        Assert.Equal("same", result.Configuration["/configuration:Shared"]);
+        Assert.DoesNotContain(_logger.Entries, entry => entry.Level == LogLevel.Information);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenHigherPriorityKeyChangesCase_ReportsNoChanges()
+    {
+        ConfigureTwoRoots();
+        EnqueueResponse(("/low/Shared", "high"));
+        EnqueueResponse(("/high/Shared", "high"));
+
+        var loader = CreateLoader();
+        loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        _logger.Clear();
+
+        EnqueueResponse(("/low/Shared", "high"));
+        EnqueueResponse(("/high/SHARED", "high"));
+
+        var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.False(result.ChangesPresent);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenOneRootFails_DoesNotUpdateThePreviousSnapshot()
+    {
+        _options.RootKeys =
+        [
+            new EtcdRootKey { RootKey = "/low/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/high/", Priority = 10 }
+        ];
+
+        var client = new Mock<IEtcdClient>();
+        client
+            .SetupSequence(GetRangeSetup())
+            .Returns(CreateResponse(("/low/one", "value-one")))
+            .Returns(CreateResponse(("/high/two", "value-two")))
+            .Returns(CreateResponse(("/low/one", "changed")))
+            .Throws(new InvalidOperationException("etcd is unavailable"))
+            .Returns(CreateResponse(("/low/one", "value-one")))
+            .Returns(CreateResponse(("/high/two", "value-two")));
+
+        var loader = new EtcdConfigurationLoader(client.Object, _options, _logger);
+        var first = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+        Assert.True(first.ChangesPresent);
+
+        Assert.Throws<InvalidOperationException>(
+            () => loader.LoadConfiguration(TestContext.Current.CancellationToken));
+
+        var third = loader.LoadConfiguration(TestContext.Current.CancellationToken);
+
+        Assert.False(third.ChangesPresent);
+        Assert.Equal("value-one", third.Configuration["/configuration:one"]);
+        Assert.Equal("value-two", third.Configuration["/configuration:two"]);
+        Assert.DoesNotContain("changed", third.Configuration.Values);
+    }
+
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(9, 10)]
+    public void LoadConfiguration_WhenPrioritiesAreDuplicatedOrRootsOverlap_FailsBeforeAnyQuery(
+        int secondPriority,
+        int _)
+    {
+        _options.RootKeys =
+        [
+            new EtcdRootKey { RootKey = "/app/", Priority = 10 },
+            new EtcdRootKey { RootKey = "/app/service/", Priority = secondPriority }
+        ];
+
+        Assert.Throws<OptionsValidationException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        _etcdClient.Verify(
+            client => client.GetRange(
+                It.IsAny<string>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenConfigurationPrefixIsInvalid_FailsBeforeAnyQuery()
+    {
+        _options.ConfigurationPrefix = "/";
+
+        Assert.Throws<OptionsValidationException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        _etcdClient.Verify(
+            client => client.GetRange(
+                It.IsAny<string>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenRootKeyIsInvalid_FailsBeforeAnyQuery()
+    {
+        _options.RootKeys = [new EtcdRootKey { RootKey = "invalid/" }];
+
+        Assert.Throws<OptionsValidationException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        _etcdClient.Verify(
+            client => client.GetRange(
+                It.IsAny<string>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -275,6 +581,22 @@ public class EtcdConfigurationLoaderTest
         CreateLoader(new TestTimeProvider(now)).LoadConfiguration(TestContext.Current.CancellationToken);
 
         Assert.Equal(now.Add(_options.ConfigurationTimeout).DateTime, _lastDeadline);
+    }
+
+    [Fact]
+    public void LoadConfiguration_UsesOneDeadlineForEveryRoot()
+    {
+        var now = new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
+        _options.ConfigurationTimeout = TimeSpan.FromSeconds(10);
+        ConfigureTwoRoots();
+        EnqueueResponse();
+        EnqueueResponse();
+
+        CreateLoader(new TestTimeProvider(now)).LoadConfiguration(TestContext.Current.CancellationToken);
+
+        var expected = now.Add(_options.ConfigurationTimeout).DateTime;
+        Assert.Equal(2, _calls.Count);
+        Assert.All(_calls, call => Assert.Equal(expected, call.Deadline));
     }
 
     [Fact]
@@ -377,7 +699,10 @@ public class EtcdConfigurationLoaderTest
         EnqueueResponse(("/configuration/one", "value-one"));
         var loader = new EtcdConfigurationLoader(
             _etcdClient.Object,
-            new EtcdOptions { RootKey = "/configuration" },
+            new EtcdOptions
+            {
+                RootKeys = [new EtcdRootKey { RootKey = "/configuration/" }]
+            },
             _logger);
 
         var result = loader.LoadConfiguration(TestContext.Current.CancellationToken);
@@ -645,6 +970,7 @@ public class EtcdConfigurationLoaderTest
             () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
 
         Assert.Contains("MaximumConfigurationKeyCount", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("RootKeys", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -663,12 +989,44 @@ public class EtcdConfigurationLoaderTest
     }
 
     [Fact]
+    public void LoadConfiguration_WhenKeyCountLimitIsCumulativeAcrossRoots_Throws()
+    {
+        _options.MaximumConfigurationKeyCount = 3;
+        ConfigureTwoRoots();
+        EnqueueResponse(
+            ("/low/one", "value-one"),
+            ("/low-other/skipped", "skipped"));
+        EnqueueResponse(
+            ("/high/two", "value-two"),
+            ("/high/three", "value-three"));
+
+        var exception = Assert.Throws<EtcdConfigurationLimitExceededException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("MaximumConfigurationKeyCount", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LoadConfiguration_WhenSizeLimitIsExceeded_Throws()
     {
         _options.MaximumConfigurationSizeBytes = 5;
         EnqueueResponse(("/configuration/one", "value-one"));
 
         var exception = Assert.ThrowsAny<InvalidOperationException>(
+            () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
+
+        Assert.Contains("MaximumConfigurationSizeBytes", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadConfiguration_WhenSizeLimitIsCumulativeAcrossRoots_Throws()
+    {
+        _options.MaximumConfigurationSizeBytes = 20;
+        ConfigureTwoRoots();
+        EnqueueResponse(("/low/one", "value-one"));
+        EnqueueResponse(("/high/two", "value-two"));
+
+        var exception = Assert.Throws<EtcdConfigurationLimitExceededException>(
             () => CreateLoader().LoadConfiguration(TestContext.Current.CancellationToken));
 
         Assert.Contains("MaximumConfigurationSizeBytes", exception.Message, StringComparison.Ordinal);
@@ -692,12 +1050,31 @@ public class EtcdConfigurationLoaderTest
             entry => entry.Message == "Configuration key /configuration:display-name was added with value visible");
     }
 
+    private void ConfigureTwoRoots()
+    {
+        _options.RootKeys =
+        [
+            new EtcdRootKey { RootKey = "/low/", Priority = 0 },
+            new EtcdRootKey { RootKey = "/high/", Priority = 10 }
+        ];
+    }
+
     private EtcdConfigurationLoader CreateLoader() => new(_etcdClient.Object, _options, _logger);
 
     private EtcdConfigurationLoader CreateLoader(TimeProvider timeProvider) =>
         new(_etcdClient.Object, _options, _logger, timeProvider, null);
 
-    private void EnqueueResponse(params (string Key, string Value)[] values)
+    private static System.Linq.Expressions.Expression<Func<IEtcdClient, RangeResponse>> GetRangeSetup() =>
+        client => client.GetRange(
+            It.IsAny<string>(),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>());
+
+    private void EnqueueResponse(params (string Key, string Value)[] values) =>
+        _responses.Enqueue(CreateResponse(values));
+
+    private static RangeResponse CreateResponse(params (string Key, string Value)[] values)
     {
         var response = new RangeResponse();
         foreach (var (key, value) in values)
@@ -709,8 +1086,10 @@ public class EtcdConfigurationLoaderTest
             });
         }
 
-        _responses.Enqueue(response);
+        return response;
     }
+
+    private sealed record RangeCall(string Root, DateTime? Deadline);
 
     private sealed record LogEntry(LogLevel Level, string Message);
 

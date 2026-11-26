@@ -51,7 +51,8 @@ public class EtcdMtlsConfigurationTest : IntegrationTestBase
         builder.AddEtcdConfiguration(options =>
         {
             options.EndPoints = MtlsEtcdServer;
-            options.RootKey = rootKey;
+            options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+            options.ConfigurationPrefix = rootKey;
             options.SslOptions = new SslOptions
             {
                 UseSsl = true,
@@ -115,7 +116,8 @@ public class EtcdMtlsConfigurationTest : IntegrationTestBase
         builder.AddEtcdConfiguration(options =>
         {
             options.EndPoints = MtlsEtcdServer;
-            options.RootKey = rootKey;
+            options.RootKeys = [new EtcdRootKey { RootKey = rootKey + "/", Priority = 0 }];
+            options.ConfigurationPrefix = rootKey;
             options.SslOptions = new SslOptions
             {
                 UseSsl = true,

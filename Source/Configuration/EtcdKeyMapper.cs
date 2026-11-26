@@ -11,6 +11,8 @@ namespace ROOT.Etcd.Configuration;
 /// etcd stores keys as opaque byte strings; '/' is only a naming convention. This mapper
 /// treats '/' as the hierarchy separator and converts it to ':', while leaving collection
 /// index suffixes such as <c>key:0</c> attached to their segment.
+/// Scope matching against a root key is case-sensitive, matching etcd. Relative configuration
+/// keys are merged case-insensitively by the configuration loader.
 /// </remarks>
 internal static partial class EtcdKeyMapper
 {
@@ -23,28 +25,33 @@ internal static partial class EtcdKeyMapper
     private static partial Regex ValidSegmentPattern();
 
     /// <summary>
-    /// Trims whitespace and normalizes the root key to a single leading '/' with no trailing '/'.
+    /// Trims whitespace and normalizes the root key to exactly one leading and one trailing '/'.
+    /// The trailing '/' is required so an etcd range query for <c>/app/</c> cannot read keys
+    /// under <c>/application/</c>.
     /// </summary>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>The normalized root key.</returns>
-    internal static string NormalizeRootKey(string? rootKey)
+    internal static string NormalizeRootKey(string rootKey)
     {
-        if (string.IsNullOrWhiteSpace(rootKey))
+        var trimmedRootKey = rootKey.Trim().Trim('/');
+
+        if (string.IsNullOrEmpty(trimmedRootKey))
         {
             return "/";
         }
 
-        return "/" + rootKey.Trim().Trim('/');
+        return "/" + trimmedRootKey + "/";
     }
 
     /// <summary>
     /// Gets whether the etcd key is a strict descendant of the root key. Scope is determined
-    /// by the path boundary, so <c>/prefix-other/key</c> is not in the scope of <c>/prefix</c>.
+    /// by the path boundary, so <c>/prefix-other/key</c> is not in the scope of <c>/prefix/</c>.
+    /// The comparison is case-sensitive because etcd keys are case-sensitive.
     /// </summary>
     /// <param name="etcdKey">The raw etcd key.</param>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>True when the key is under the root key; otherwise false.</returns>
-    internal static bool IsInScope(string etcdKey, string? rootKey)
+    internal static bool IsInScope(string etcdKey, string rootKey)
     {
         var normalizedRootKey = NormalizeRootKey(rootKey);
         var prefix = normalizedRootKey.EndsWith('/')
@@ -56,14 +63,15 @@ internal static partial class EtcdKeyMapper
 
     /// <summary>
     /// Gets whether the etcd key uses the removed ':' hierarchy format under the root key.
+    /// The comparison is case-sensitive because etcd keys are case-sensitive.
     /// </summary>
     /// <param name="etcdKey">The raw etcd key.</param>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>True when the key uses the old format; otherwise false.</returns>
-    internal static bool IsOldFormat(string etcdKey, string? rootKey)
+    internal static bool IsOldFormat(string etcdKey, string rootKey)
     {
         var normalizedRootKey = NormalizeRootKey(rootKey);
-        return etcdKey.StartsWith(normalizedRootKey + ":", StringComparison.Ordinal);
+        return etcdKey.StartsWith(normalizedRootKey.TrimEnd('/') + ":", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -82,7 +90,51 @@ internal static partial class EtcdKeyMapper
                 "The etcd key is empty. Configuration keys must be non-empty paths such as '/prefix/key'.");
         }
 
-        var path = etcdKey.TrimStart('/');
+        var segments = SplitAndValidateSegments(etcdKey, etcdKey.TrimStart('/'));
+        return "/" + string.Join(':', segments);
+    }
+
+    /// <summary>
+    /// Strips the normalized root prefix from an in-scope etcd key and maps the remaining
+    /// path segments to a relative configuration key. The result starts with ':' so it can be
+    /// appended directly to <see cref="EtcdOptions.ConfigurationPrefix"/>.
+    /// </summary>
+    /// <param name="etcdKey">The raw etcd key, which must be a strict descendant of the root.</param>
+    /// <param name="rootKey">The configured root key.</param>
+    /// <returns>The relative configuration key, for example <c>:database:host</c>.</returns>
+    /// <exception cref="EtcdConfigurationKeyFormatException">
+    /// The key has no relative path, contains an empty segment, or uses ':' outside a
+    /// collection index suffix.
+    /// </exception>
+    internal static string ToRelativeConfigurationKey(string etcdKey, string rootKey)
+    {
+        var normalizedRootKey = NormalizeRootKey(rootKey);
+        var prefix = normalizedRootKey.EndsWith('/')
+            ? normalizedRootKey
+            : normalizedRootKey + "/";
+
+        if (!etcdKey.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            throw new EtcdConfigurationKeyFormatException(
+                $"The etcd key '{etcdKey}' is not a strict descendant of the root key '{normalizedRootKey}'. " +
+                "Only keys below the root path boundary can be mapped.");
+        }
+
+        var relativePath = etcdKey.Substring(prefix.Length);
+        var segments = SplitAndValidateSegments(etcdKey, relativePath);
+        return ":" + string.Join(':', segments);
+    }
+
+    /// <summary>
+    /// Gets whether a path segment is valid. ':' is allowed only as a collection index suffix.
+    /// </summary>
+    /// <param name="segment">The path segment to validate.</param>
+    /// <returns>True when the segment is valid; otherwise false.</returns>
+    internal static bool IsValidSegment(string segment) =>
+        !string.IsNullOrEmpty(segment) && ValidSegmentPattern().IsMatch(segment);
+
+    private static string[] SplitAndValidateSegments(string etcdKey, string path)
+    {
         if (path.Length == 0)
         {
             throw new EtcdConfigurationKeyFormatException(
@@ -107,16 +159,8 @@ internal static partial class EtcdKeyMapper
             }
         }
 
-        return "/" + string.Join(':', segments);
+        return segments;
     }
-
-    /// <summary>
-    /// Gets whether a path segment is valid. ':' is allowed only as a collection index suffix.
-    /// </summary>
-    /// <param name="segment">The path segment to validate.</param>
-    /// <returns>True when the segment is valid; otherwise false.</returns>
-    internal static bool IsValidSegment(string segment) =>
-        !string.IsNullOrEmpty(segment) && ValidSegmentPattern().IsMatch(segment);
 }
 
 /// <summary>

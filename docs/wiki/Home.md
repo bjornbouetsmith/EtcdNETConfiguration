@@ -8,6 +8,7 @@ The library is published as the NuGet package `ROOT.Etcd.Configuration` under th
 
 ## Why use it
 
+- **Prioritized roots**: merge configuration from several etcd prefixes, with a higher-priority root overriding lower ones.
 - **Live updates** without restarting the application. Refresh is poll-based, not etcd watch-based.
 - **Change auditing** that logs added, changed, and removed keys, with optional value redaction (`***`).
 - **Fail-closed startup**: invalid options, TLS problems, or an unreachable etcd cluster prevent the host from starting.
@@ -27,12 +28,16 @@ var builder = Host.CreateDefaultBuilder();
 builder.AddEtcdConfiguration(options =>
 {
     options.EndPoints = "http://127.0.0.1:2379";
-    options.RootKey = "/myroot";
+    options.RootKeys =
+    [
+        new EtcdRootKey { RootKey = "/myroot/", Priority = 0 }
+    ];
+    options.ConfigurationPrefix = "/myroot";
     options.RefreshInterval = TimeSpan.FromMinutes(5);
 });
 ```
 
-Keys in etcd use the native `/` path hierarchy. The library maps `/` to the `:` separator used by `IConfiguration`. With `RootKey` set to `/myroot`, store values like this:
+Keys in etcd use the native `/` path hierarchy. The library strips each root prefix, merges the remaining relative keys by priority, and maps `/` to the `:` separator used by `IConfiguration`. Root keys must end with `/`; with a root `/myroot/` and `ConfigurationPrefix = "/myroot"`, store values like this:
 
 | etcd key | IConfiguration key | Value |
 |-|-|-|
