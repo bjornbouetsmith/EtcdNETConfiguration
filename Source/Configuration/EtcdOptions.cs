@@ -59,7 +59,7 @@ public record EtcdOptions
     /// </summary>
     [Required(ErrorMessage = "ConfigurationPrefix must be set to a non empty string")]
     [CustomValidation(typeof(EtcdOptions), nameof(ValidateConfigurationPrefix))]
-    public string? ConfigurationPrefix { get; set; } = "/configuration";
+    public string ConfigurationPrefix { get; set; } = "/configuration";
 
     /// <summary>
     /// Gets or sets the interval at which configuration is polled for changes from etcd.
@@ -100,9 +100,8 @@ public record EtcdOptions
     /// Gets or sets the maximum combined key and value size, in bytes, that one configuration
     /// load may return across all configured <see cref="RootKeys"/>. Defaults to 8 MiB.
     /// </summary>
-    [Range(typeof(long), "1", "9223372036854775807",
-        ErrorMessage = "MaximumConfigurationSizeBytes must be at least 1")]
-    public long MaximumConfigurationSizeBytes { get; set; } = 8 * 1024 * 1024;
+    [Range(1, int.MaxValue, ErrorMessage = "MaximumConfigurationSizeBytes must be at least 1")]
+    public int MaximumConfigurationSizeBytes { get; set; } = 8 * 1024 * 1024;
 
     /// <summary>
     /// Gets or sets how many consecutive permanent polling failures are tolerated before the
@@ -167,109 +166,5 @@ public record EtcdOptions
             : new ValidationResult(
                 string.Join(Environment.NewLine, failures),
                 [nameof(ConfigurationPrefix)]);
-    }
-
-    /// <summary>
-    /// Compares two options instances, including their root definitions by value.
-    /// </summary>
-    /// <param name="other">The other options instance.</param>
-    /// <returns>True when both instances contain the same values.</returns>
-    public virtual bool Equals(EtcdOptions? other)
-    {
-        if (other is null)
-        {
-            return false;
-        }
-
-        if (ReferenceEquals(this, other))
-        {
-            return true;
-        }
-
-        return string.Equals(EndPoints, other.EndPoints, StringComparison.Ordinal) &&
-               RootKeysEqual(RootKeys, other.RootKeys) &&
-               string.Equals(ConfigurationPrefix, other.ConfigurationPrefix, StringComparison.Ordinal) &&
-               RefreshInterval == other.RefreshInterval &&
-               ConfigurationTimeout == other.ConfigurationTimeout &&
-               RedactConfigurationValues == other.RedactConfigurationValues &&
-               MaximumConfigurationKeyCount == other.MaximumConfigurationKeyCount &&
-               MaximumConfigurationSizeBytes == other.MaximumConfigurationSizeBytes &&
-               MaximumConsecutivePermanentFailures == other.MaximumConsecutivePermanentFailures &&
-               Equals(SslOptions, other.SslOptions);
-    }
-
-    /// <inheritdoc/>
-    public override int GetHashCode()
-    {
-        var hash = new HashCode();
-        hash.Add(EndPoints, StringComparer.Ordinal);
-        AddRootKeysToHash(ref hash, RootKeys);
-        hash.Add(ConfigurationPrefix, StringComparer.Ordinal);
-        hash.Add(RefreshInterval);
-        hash.Add(ConfigurationTimeout);
-        hash.Add(RedactConfigurationValues);
-        hash.Add(MaximumConfigurationKeyCount);
-        hash.Add(MaximumConfigurationSizeBytes);
-        hash.Add(MaximumConsecutivePermanentFailures);
-        hash.Add(SslOptions);
-        return hash.ToHashCode();
-    }
-
-    private static bool RootKeysEqual(
-        IReadOnlyList<EtcdRootKey>? first,
-        IReadOnlyList<EtcdRootKey>? second)
-    {
-        if (ReferenceEquals(first, second))
-        {
-            return true;
-        }
-
-        if (first is null || second is null || first.Count != second.Count)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < first.Count; index++)
-        {
-            var firstRoot = first[index];
-            var secondRoot = second[index];
-
-            if (ReferenceEquals(firstRoot, secondRoot))
-            {
-                continue;
-            }
-
-            if (firstRoot is null ||
-                secondRoot is null ||
-                !string.Equals(firstRoot.RootKey, secondRoot.RootKey, StringComparison.OrdinalIgnoreCase) ||
-                firstRoot.Priority != secondRoot.Priority)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static void AddRootKeysToHash(ref HashCode hash, IReadOnlyList<EtcdRootKey>? rootKeys)
-    {
-        if (rootKeys is null)
-        {
-            hash.Add(0);
-            return;
-        }
-
-        hash.Add(rootKeys.Count);
-        foreach (var root in rootKeys)
-        {
-            if (root is null)
-            {
-                hash.Add(0);
-                continue;
-            }
-
-            hash.Add(root.RootKey, StringComparer.OrdinalIgnoreCase);
-            hash.Add(root.Priority);
-        }
     }
 }

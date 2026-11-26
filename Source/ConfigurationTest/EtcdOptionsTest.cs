@@ -64,100 +64,6 @@ public class EtcdOptionsTest
     }
 
     [Fact]
-    public void OptionsWithTheSameValues_AreEqual()
-    {
-        var first = new EtcdOptions
-        {
-            EndPoints = "http://localhost:2379",
-            RootKeys =
-            [
-                new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 },
-                new EtcdRootKey { RootKey = "/other-root/", Priority = 10 }
-            ],
-            ConfigurationPrefix = "/custom-prefix",
-            RefreshInterval = TimeSpan.FromSeconds(30)
-        };
-        var second = new EtcdOptions
-        {
-            EndPoints = "http://localhost:2379",
-            RootKeys =
-            [
-                new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 },
-                new EtcdRootKey { RootKey = "/other-root/", Priority = 10 }
-            ],
-            ConfigurationPrefix = "/custom-prefix",
-            RefreshInterval = TimeSpan.FromSeconds(30)
-        };
-
-        Assert.Equal(first, second);
-        Assert.Equal(first.GetHashCode(), second.GetHashCode());
-    }
-
-    [Fact]
-    public void OptionsWithRootKeyCaseDifferences_AreEqual()
-    {
-        var first = new EtcdOptions
-        {
-            RootKeys = [new EtcdRootKey { RootKey = "/CUSTOM-ROOT/", Priority = 0 }]
-        };
-        var second = new EtcdOptions
-        {
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 }]
-        };
-
-        Assert.Equal(first, second);
-        Assert.Equal(first.GetHashCode(), second.GetHashCode());
-    }
-
-    [Fact]
-    public void OptionsWithDifferentPriorities_AreNotEqual()
-    {
-        var first = new EtcdOptions
-        {
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/", Priority = 0 }]
-        };
-        var second = new EtcdOptions
-        {
-            RootKeys = [new EtcdRootKey { RootKey = "/custom-root/", Priority = 10 }]
-        };
-
-        Assert.NotEqual(first, second);
-    }
-
-    [Fact]
-    public void OptionsWithDifferentRootOrder_AreNotEqual()
-    {
-        var first = new EtcdOptions
-        {
-            RootKeys =
-            [
-                new EtcdRootKey { RootKey = "/first/", Priority = 0 },
-                new EtcdRootKey { RootKey = "/second/", Priority = 10 }
-            ]
-        };
-        var second = new EtcdOptions
-        {
-            RootKeys =
-            [
-                new EtcdRootKey { RootKey = "/second/", Priority = 10 },
-                new EtcdRootKey { RootKey = "/first/", Priority = 0 }
-            ]
-        };
-
-        Assert.NotEqual(first, second);
-    }
-
-    [Fact]
-    public void OptionsWithNullRootKeys_CanBeComparedWithoutThrowing()
-    {
-        var first = new EtcdOptions { RootKeys = null! };
-        var second = new EtcdOptions { RootKeys = null! };
-
-        Assert.Equal(first, second);
-        Assert.Equal(first.GetHashCode(), second.GetHashCode());
-    }
-
-    [Fact]
     public void Validation_WithDefaultOptions_DoesNotReturnErrors()
     {
         var options = new EtcdOptions();
@@ -222,10 +128,9 @@ public class EtcdOptionsTest
     }
 
     [Theory]
-    [InlineData(null)]
     [InlineData("")]
     [InlineData(" ")]
-    public void Validation_WhenRootKeyIsMissing_ReturnsError(string? rootKey)
+    public void Validation_WhenRootKeyIsMissing_ReturnsError(string rootKey)
     {
         var options = new EtcdOptions
         {
@@ -349,10 +254,9 @@ public class EtcdOptionsTest
     }
 
     [Theory]
-    [InlineData(null)]
     [InlineData("")]
     [InlineData(" ")]
-    public void Validation_WhenConfigurationPrefixIsMissing_ReturnsError(string? configurationPrefix)
+    public void Validation_WhenConfigurationPrefixIsMissing_ReturnsError(string configurationPrefix)
     {
         var options = new EtcdOptions { ConfigurationPrefix = configurationPrefix };
 
@@ -404,9 +308,9 @@ public class EtcdOptionsTest
     }
 
     [Theory]
-    [InlineData(0L)]
-    [InlineData(-1L)]
-    public void Validation_WhenMaximumConfigurationSizeIsNotPositive_ReturnsError(long maximumSize)
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validation_WhenMaximumConfigurationSizeIsNotPositive_ReturnsError(int maximumSize)
     {
         var options = new EtcdOptions { MaximumConfigurationSizeBytes = maximumSize };
 

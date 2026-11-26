@@ -119,12 +119,12 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
 
         // One budget per configuration load. Every root query shares the same deadline.
         var deadLine = _timeProvider.GetUtcNow().Add(_options.ConfigurationTimeout);
-        var configurationPrefix = _options.ConfigurationPrefix!.Trim();
+        var configurationPrefix = _options.ConfigurationPrefix.Trim();
 
         // Relative configuration keys are case-insensitive, matching IConfiguration lookups.
         var merged = new Dictionary<string, MergedEntry>(StringComparer.OrdinalIgnoreCase);
 
-        var totalSize = 0L;
+        var totalSize = 0;
         var processedKeyCount = 0;
 
         foreach (var root in roots)
@@ -164,7 +164,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
         EtcdRootKey root,
         string configurationPrefix,
         Dictionary<string, MergedEntry> merged,
-        ref long totalSize,
+        ref int totalSize,
         ref int processedKeyCount)
     {
         var normalizedRootKey = EtcdKeyMapper.NormalizeRootKey(root.RootKey);
@@ -196,7 +196,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     /// <summary>
     /// Counts every returned key so out-of-scope keys and collisions cannot bypass the limits.
     /// </summary>
-    private void TrackResponseEntry(KeyValue kv, ref long totalSize, ref int processedKeyCount)
+    private void TrackResponseEntry(KeyValue kv, ref int totalSize, ref int processedKeyCount)
     {
         if (processedKeyCount >= _options.MaximumConfigurationKeyCount)
         {
@@ -207,7 +207,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
 
         processedKeyCount++;
 
-        totalSize += (long)kv.Key.Length + kv.Value.Length;
+        totalSize += kv.Key.Length + kv.Value.Length;
         if (totalSize > _options.MaximumConfigurationSizeBytes)
         {
             throw new EtcdConfigurationLimitExceededException(

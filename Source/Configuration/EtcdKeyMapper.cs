@@ -31,9 +31,9 @@ internal static partial class EtcdKeyMapper
     /// </summary>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>The normalized root key.</returns>
-    internal static string NormalizeRootKey(string? rootKey)
+    internal static string NormalizeRootKey(string rootKey)
     {
-        var trimmedRootKey = rootKey?.Trim().Trim('/');
+        var trimmedRootKey = rootKey.Trim().Trim('/');
 
         if (string.IsNullOrEmpty(trimmedRootKey))
         {
@@ -51,7 +51,7 @@ internal static partial class EtcdKeyMapper
     /// <param name="etcdKey">The raw etcd key.</param>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>True when the key is under the root key; otherwise false.</returns>
-    internal static bool IsInScope(string etcdKey, string? rootKey)
+    internal static bool IsInScope(string etcdKey, string rootKey)
     {
         var normalizedRootKey = NormalizeRootKey(rootKey);
         var prefix = normalizedRootKey.EndsWith('/')
@@ -68,7 +68,7 @@ internal static partial class EtcdKeyMapper
     /// <param name="etcdKey">The raw etcd key.</param>
     /// <param name="rootKey">The configured root key.</param>
     /// <returns>True when the key uses the old format; otherwise false.</returns>
-    internal static bool IsOldFormat(string etcdKey, string? rootKey)
+    internal static bool IsOldFormat(string etcdKey, string rootKey)
     {
         var normalizedRootKey = NormalizeRootKey(rootKey);
         return etcdKey.StartsWith(normalizedRootKey.TrimEnd('/') + ":", StringComparison.Ordinal);
@@ -106,7 +106,7 @@ internal static partial class EtcdKeyMapper
     /// The key has no relative path, contains an empty segment, or uses ':' outside a
     /// collection index suffix.
     /// </exception>
-    internal static string ToRelativeConfigurationKey(string etcdKey, string? rootKey)
+    internal static string ToRelativeConfigurationKey(string etcdKey, string rootKey)
     {
         var normalizedRootKey = NormalizeRootKey(rootKey);
         var prefix = normalizedRootKey.EndsWith('/')

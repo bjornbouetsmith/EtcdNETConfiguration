@@ -119,8 +119,7 @@ public class EtcdKeyMapperTest
     [InlineData("prefix", "/prefix/")]
     [InlineData("/", "/")]
     [InlineData("", "/")]
-    [InlineData(null, "/")]
-    public void NormalizeRootKey_ReturnsOneLeadingAndTrailingSlash(string? rootKey, string expected)
+    public void NormalizeRootKey_ReturnsOneLeadingAndTrailingSlash(string rootKey, string expected)
     {
         Assert.Equal(expected, EtcdKeyMapper.NormalizeRootKey(rootKey));
     }

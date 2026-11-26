@@ -14,7 +14,7 @@ public sealed record EtcdRootKey
     /// contain empty path segments or ':'. The trailing '/' scopes the etcd range query so
     /// <c>/app/</c> cannot read keys under <c>/application/</c>. Defaults to "/configuration/".
     /// </summary>
-    public string? RootKey { get; set; } = "/configuration/";
+    public string RootKey { get; set; } = "/configuration/";
 
     /// <summary>
     /// Gets or sets the merge priority. Higher values override lower values when the same
