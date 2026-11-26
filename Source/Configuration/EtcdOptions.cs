@@ -27,9 +27,9 @@ public record EtcdOptions
     private const string MaximumRefreshInterval = "1.00:00:00";
 
     /// <summary>
-    /// The largest timeout we want to support
+    /// The largest timeout we want to support, one hour.
     /// </summary>
-    private const string MaximumConfigurationTimeout = "00:01:00";
+    private const string MaximumConfigurationTimeout = "01:00:00";
 
     /// <summary>
     /// Gets or sets a comma-separated list of etcd endpoints (e.g., "https://127.0.0.1:2379,https://127.0.0.1:2380").
@@ -78,7 +78,7 @@ public record EtcdOptions
     /// A non-zero value indicates the operation should complete within this duration; zero would typically indicate a timeout of zero.
     /// </summary>
     [Range(typeof(TimeSpan), MinimumConfigurationTimeout, MaximumConfigurationTimeout,
-        ErrorMessage = "ConfigurationTimeout must be set to a timespan greater than 0 and less than 60 seconds")]
+        ErrorMessage = "ConfigurationTimeout must be set to a timespan greater than 0 and less than or equal to 1 hour")]
     public TimeSpan ConfigurationTimeout { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>

@@ -59,7 +59,7 @@ When `RedactConfigurationValues` is `true` (the default), values are replaced wi
 
 ## Timeouts and errors
 
-`ConfigurationTimeout` limits one configuration load. Every root query shares the same deadline, and the budget is not reset per root. The default is one second; the supported range is one second to 60 seconds. Polls are also cancelled when the host stops, so shutdown is not blocked by a slow etcd read.
+`ConfigurationTimeout` limits one configuration load. Every root query shares the same deadline, and the budget is not reset per root. The default is one second; the supported range is one second to one hour. Polls are also cancelled when the host stops, so shutdown is not blocked by a slow etcd read.
 
 A single poll is limited by `MaximumConfigurationKeyCount` (default 10,000) and `MaximumConfigurationSizeBytes` (default 8 MiB). The limits are cumulative across every root. Every key returned by etcd counts, including keys outside a root's scope, so a broad root cannot bypass the limit. A read that exceeds either limit fails instead of allocating an unbounded dictionary.
 

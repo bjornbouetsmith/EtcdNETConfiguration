@@ -35,7 +35,7 @@ builder.AddEtcdConfiguration(options =>
 | `RootKeys` | one root: `/configuration`, priority `0` | Required; at least one root. Each root key must start with `/`, must not be `/` or end with `/`, and must not contain `//` or `:`. Priorities must be unique. Roots must not be duplicates, overlap, or nest, compared case-insensitively. |
 | `ConfigurationPrefix` | `/configuration` | Required; must start with `/`, must not be `/` or end with `/`, and must not contain `//` or `:`. The prefix is output-only; it is never queried from etcd. |
 | `RefreshInterval` | 1 minute | Must be between `TimeSpan.Zero` and 24 hours, inclusive. `TimeSpan.Zero` disables background polling. |
-| `ConfigurationTimeout` | 1 second | One budget per configuration load, shared by every root query. Must be between 1 second and 60 seconds, inclusive. |
+| `ConfigurationTimeout` | 1 second | One budget per configuration load, shared by every root query. Must be between 1 second and 1 hour, inclusive. |
 | `RedactConfigurationValues` | `true` | No validation. Keep `true` in production. Secret-like keys are redacted even when this is `false`. |
 | `MaximumConfigurationKeyCount` | 10,000 | At least 1. A read that returns more keys fails. |
 | `MaximumConfigurationSizeBytes` | 8 MiB (8,388,608) | At least 1. A read whose combined key and value size exceeds this fails. |
@@ -172,7 +172,7 @@ Setting `RefreshInterval` to `TimeSpan.Zero` disables background polling. See [R
 Limits one configuration load. Every root query shares the same deadline:
 
 - **Minimum:** `00:00:01` (1 second).
-- **Maximum:** `00:01:00` (60 seconds).
+- **Maximum:** `01:00:00` (1 hour).
 
 ## Redaction
 

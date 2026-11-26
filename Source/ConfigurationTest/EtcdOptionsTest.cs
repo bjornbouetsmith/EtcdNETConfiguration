@@ -498,7 +498,37 @@ public class EtcdOptionsTest
         var errors = Validate(options);
 
         Assert.Contains(errors, error =>
-            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0 and less than 60 seconds");
+            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0 and less than or equal to 1 hour");
+    }
+
+    [Fact]
+    public void Validation_WhenConfigurationTimeoutIsAtMinimum_DoesNotReturnErrors()
+    {
+        var options = new EtcdOptions { ConfigurationTimeout = TimeSpan.FromSeconds(1) };
+
+        Assert.Empty(Validate(options));
+    }
+
+    [Fact]
+    public void Validation_WhenConfigurationTimeoutIsAtMaximum_DoesNotReturnErrors()
+    {
+        var options = new EtcdOptions { ConfigurationTimeout = TimeSpan.FromHours(1) };
+
+        Assert.Empty(Validate(options));
+    }
+
+    [Fact]
+    public void Validation_WhenConfigurationTimeoutIsOneTickAboveMaximum_ReturnsError()
+    {
+        var options = new EtcdOptions
+        {
+            ConfigurationTimeout = TimeSpan.FromHours(1).Add(TimeSpan.FromTicks(1))
+        };
+
+        var errors = Validate(options);
+
+        Assert.Contains(errors, error =>
+            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0 and less than or equal to 1 hour");
     }
 
     [Fact]
@@ -531,7 +561,7 @@ public class EtcdOptionsTest
             error.ErrorMessage ==
             "RefreshInterval must be set to a timespan greater than or equal to 0 and must not exceed 24 hours");
         Assert.Contains(errors, error =>
-            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0 and less than 60 seconds");
+            error.ErrorMessage == "ConfigurationTimeout must be set to a timespan greater than 0 and less than or equal to 1 hour");
     }
 
     private static List<ValidationResult> Validate(EtcdOptions options)
