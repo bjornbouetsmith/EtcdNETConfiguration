@@ -138,7 +138,6 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
             MergeRootResponse(
                 response,
                 root,
-                normalizedRootKey,
                 configurationPrefix,
                 merged,
                 ref totalSize,
@@ -163,12 +162,12 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
     private void MergeRootResponse(
         RangeResponse response,
         EtcdRootKey root,
-        string normalizedRootKey,
         string configurationPrefix,
         Dictionary<string, MergedEntry> merged,
         ref long totalSize,
         ref int processedKeyCount)
     {
+        var normalizedRootKey = EtcdKeyMapper.NormalizeRootKey(root.RootKey);
         var rootKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var kv in response.Kvs)
@@ -188,7 +187,6 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
                 value,
                 relativeKey,
                 root,
-                normalizedRootKey,
                 configurationPrefix,
                 rootKeys,
                 merged);
@@ -223,7 +221,6 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
         string value,
         string relativeKey,
         EtcdRootKey root,
-        string normalizedRootKey,
         string configurationPrefix,
         Dictionary<string, string> rootKeys,
         Dictionary<string, MergedEntry> merged)
@@ -231,7 +228,8 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
         if (rootKeys.TryGetValue(relativeKey, out var existingEtcdKey))
         {
             throw new EtcdConfigurationKeyCollisionException(
-                $"The etcd keys '{existingEtcdKey}' and '{etcdKey}' under root '{normalizedRootKey}' " +
+                $"The etcd keys '{existingEtcdKey}' and '{etcdKey}' under root " +
+                $"'{EtcdKeyMapper.NormalizeRootKey(root.RootKey)}' " +
                 $"both map to the relative configuration key '{relativeKey}' " +
                 $"('{configurationPrefix}{relativeKey}'). Remove or rename one of the keys.");
         }
@@ -244,7 +242,7 @@ public sealed class EtcdConfigurationLoader : IEtcdConfigurationLoader
             _logger.LogDebug(
                 "Configuration key {Key} from root {WinningRoot} overrides root {ShadowedRoot}",
                 relativeKey,
-                normalizedRootKey,
+                EtcdKeyMapper.NormalizeRootKey(root.RootKey),
                 EtcdKeyMapper.NormalizeRootKey(existing.Root.RootKey));
         }
 
