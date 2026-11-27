@@ -418,7 +418,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
             builder.Logging.ClearProviders();
             builder.Logging.AddProvider(new XUnitLoggerProvider(_testOutputHelper));
 
-            Assert.Throws<EtcdConfigurationKeyFormatException>(() =>
+            var ex = Assert.Throws<InitialConfigurationLoadException>(() =>
                 builder.AddEtcdConfiguration(options =>
                 {
                     options.EndPoints = _etcdServer;
@@ -426,6 +426,7 @@ public class EtcdConfigurationTest : IntegrationTestBase
                     options.ConfigurationPrefix = rootKey;
                     options.RefreshInterval = TimeSpan.Zero;
                 }));
+            Assert.IsType<EtcdConfigurationKeyFormatException>(ex.InnerException);
         }
         finally
         {

@@ -20,36 +20,32 @@ internal static class EtcdFailureClassifier
     {
         ArgumentNullException.ThrowIfNull(exception);
 
-        if (exception is OptionsValidationException or
-            EtcdConfigurationLimitExceededException or
-            EtcdConfigurationKeyFormatException or
-            EtcdConfigurationKeyCollisionException or
-            AuthenticationException or
-            CryptographicException or
-            UnauthorizedAccessException)
+        switch (exception)
         {
-            return true;
-        }
-
-        if (exception is RpcException rpcException && IsPermanentStatus(rpcException.StatusCode))
-        {
-            return true;
-        }
-
-        if (exception is AggregateException aggregateException)
-        {
-            foreach (var innerException in aggregateException.InnerExceptions)
+            case OptionsValidationException or
+                EtcdConfigurationLimitExceededException or
+                EtcdConfigurationKeyFormatException or
+                EtcdConfigurationKeyCollisionException or
+                AuthenticationException or
+                CryptographicException or
+                UnauthorizedAccessException:
+            case RpcException rpcException when IsPermanentStatus(rpcException.StatusCode):
+                return true;
+            case AggregateException aggregateException:
             {
-                if (IsPermanent(innerException))
+                foreach (var innerException in aggregateException.InnerExceptions)
                 {
-                    return true;
+                    if (IsPermanent(innerException))
+                    {
+                        return true;
+                    }
                 }
+
+                return false;
             }
-
-            return false;
+            default:
+                return exception.InnerException is not null && IsPermanent(exception.InnerException);
         }
-
-        return exception.InnerException is not null && IsPermanent(exception.InnerException);
     }
 
     private static bool IsPermanentStatus(StatusCode statusCode) =>

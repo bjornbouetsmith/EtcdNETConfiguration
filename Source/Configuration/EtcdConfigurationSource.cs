@@ -65,26 +65,23 @@ public class EtcdConfigurationSource : IConfigurationSource
 
             EtcdTlsOptionsValidator.ValidateAndThrow(_options);
 
-            var client = _clientFactory.CreateClient(_options);
-
-            try
-            {
-                EtcdConfigurationLoader loader = new EtcdConfigurationLoader(client, _options, NullLogger<EtcdConfigurationLoader>.Instance);
-                var data = loader.LoadConfiguration();
-                return new EtcdConfiguration(data.Configuration);
-            }
-            finally
-            {
-                client.Dispose();
-            }
+            using var client = _clientFactory.CreateClient(_options);
+                       
+            EtcdConfigurationLoader loader = new EtcdConfigurationLoader(client, _options, NullLogger<EtcdConfigurationLoader>.Instance);
+            var data = loader.LoadConfiguration();
+            return new EtcdConfiguration(data.Configuration);
         }
         catch (Exception exception)
         {
-            LogInitialLoadFailure(exception);
-            throw;
+            throw new InitialConfigurationLoadException("Failed to load the initial etcd configuration.", exception);
         }
     }
+}
 
-    private void LogInitialLoadFailure(Exception exception) =>
-        _logger.LogError(exception, "Failed to load the initial etcd configuration. The host will not start.");
+public sealed class InitialConfigurationLoadException : Exception
+{
+    public InitialConfigurationLoadException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

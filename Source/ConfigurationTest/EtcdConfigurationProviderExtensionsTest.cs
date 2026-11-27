@@ -174,7 +174,7 @@ public class EtcdConfigurationProviderExtensionsTest
         clientOptions.ConfigureChannel!(channelOptions);
 
         Assert.Equal(
-            useSsl ? Grpc.Core.ChannelCredentials.SecureSsl : Grpc.Core.ChannelCredentials.Insecure,
+            useSsl ? ChannelCredentials.SecureSsl : ChannelCredentials.Insecure,
             channelOptions.Credentials);
     }
 
