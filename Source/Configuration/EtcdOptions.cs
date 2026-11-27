@@ -152,7 +152,7 @@ public record EtcdOptions
     /// </summary>
     /// <param name="configurationPrefix">The configured output prefix.</param>
     /// <returns>A validation result describing the problem, or success.</returns>
-    public static ValidationResult? ValidateConfigurationPrefix(string? configurationPrefix)
+    public static ValidationResult? ValidateConfigurationPrefix(string configurationPrefix)
     {
         if (string.IsNullOrWhiteSpace(configurationPrefix))
         {

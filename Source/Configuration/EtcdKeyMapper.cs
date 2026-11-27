@@ -120,7 +120,7 @@ internal static partial class EtcdKeyMapper
                 "Only keys below the root path boundary can be mapped.");
         }
 
-        var relativePath = etcdKey.Substring(prefix.Length);
+        var relativePath = etcdKey[prefix.Length..];
         var segments = SplitAndValidateSegments(etcdKey, relativePath);
         return ":" + string.Join(':', segments);
     }
