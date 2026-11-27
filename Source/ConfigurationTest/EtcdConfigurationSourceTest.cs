@@ -7,7 +7,6 @@ using Etcdserverpb;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Moq;
 using Mvccpb;
 using ROOT.Etcd.Configuration;
@@ -71,14 +70,14 @@ public class EtcdConfigurationSourceTest
         source.Build(new ConfigurationBuilder());
 
         client.Verify(
-            client => client.GetRange(
+            cl => cl.GetRange(
                 "/custom-root/",
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         client.Verify(
-            client => client.GetRange(
+            cl => cl.GetRange(
                 "/other-root/",
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
@@ -124,7 +123,7 @@ public class EtcdConfigurationSourceTest
         source.Build(new ConfigurationBuilder());
 
         factory.Verify(
-            factory => factory.CreateClient(It.Is<EtcdOptions>(actual => ReferenceEquals(actual, options))),
+            f => f.CreateClient(It.Is<EtcdOptions>(actual => ReferenceEquals(actual, options))),
             Times.Once);
     }
 
@@ -140,7 +139,7 @@ public class EtcdConfigurationSourceTest
 
         Assert.True(provider.TryGet("/configuration:one", out var value));
         Assert.Equal("value-one", value);
-        client.Verify(client => client.Dispose(), Times.Once);
+        client.Verify(cl => cl.Dispose(), Times.Once);
     }
 
     [Fact]
@@ -173,15 +172,15 @@ public class EtcdConfigurationSourceTest
         var second = source.Build(builder);
 
         Assert.NotSame(first, second);
-        factory.Verify(factory => factory.CreateClient(It.IsAny<EtcdOptions>()), Times.Exactly(2));
+        factory.Verify(f => f.CreateClient(It.IsAny<EtcdOptions>()), Times.Exactly(2));
         client.Verify(
-            client => client.GetRange(
+            cl => cl.GetRange(
                 It.IsAny<string>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(2));
-        client.Verify(client => client.Dispose(), Times.Exactly(2));
+        client.Verify(cl => cl.Dispose(), Times.Exactly(2));
     }
 
     [Fact]
@@ -199,12 +198,13 @@ public class EtcdConfigurationSourceTest
         });
         var source = CreateSource(sharedConfiguration, factory.Object);
 
-        var exception = Assert.Throws<InvalidOperationException>(
+        var exception = Assert.Throws<InitialConfigurationLoadException>(
             () => source.Build(new ConfigurationBuilder()));
 
-        Assert.Contains("etcd is unavailable", exception.Message);
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.Contains("etcd is unavailable", exception.InnerException.Message);
         Assert.Equal("stale-value", sharedConfiguration.Configuration["/configuration:stale"]);
-        client.Verify(client => client.Dispose(), Times.Once);
+        client.Verify(cl => cl.Dispose(), Times.Once);
     }
 
     [Fact]
@@ -212,20 +212,21 @@ public class EtcdConfigurationSourceTest
     {
         var factory = new Mock<IEtcdClientFactory>();
         factory
-            .Setup(factory => factory.CreateClient(It.IsAny<EtcdOptions>()))
+            .Setup(f => f.CreateClient(It.IsAny<EtcdOptions>()))
             .Throws(new InvalidOperationException("client could not be created"));
         var sharedConfiguration = new EtcdConfiguration();
         var source = new EtcdConfigurationSource(new EtcdOptions(), sharedConfiguration, factory.Object);
 
-        var exception = Assert.Throws<InvalidOperationException>(
+        var exception = Assert.Throws<InitialConfigurationLoadException>(
             () => source.Build(new ConfigurationBuilder()));
 
-        Assert.Contains("client could not be created", exception.Message);
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.Contains("client could not be created", exception.InnerException.Message);
         Assert.Empty(sharedConfiguration.Configuration);
     }
     
     [Fact]
-    public void Build_WhenInitialLoadFails_LogsErrorAndRethrows()
+    public void Build_WhenInitialLoadFails_Throws()
     {
         var client = new Mock<IEtcdClient>();
         client
@@ -239,12 +240,9 @@ public class EtcdConfigurationSourceTest
             factory.Object,
             logger);
 
-        Assert.Throws<InvalidOperationException>(() => source.Build(new ConfigurationBuilder()));
-
-        Assert.Contains(
-            logger.Entries,
-            entry => entry.Level == LogLevel.Error &&
-                     entry.Message == "Failed to load the initial etcd configuration. The host will not start.");
+        var ex = Assert.Throws<InitialConfigurationLoadException>(() => source.Build(new ConfigurationBuilder()));
+        Assert.Equal("Failed to load the initial etcd configuration.", ex.Message);
+        Assert.IsType<InvalidOperationException>(ex.InnerException);
     }
 
     private static EtcdConfigurationSource CreateSource(IEtcdClientFactory factory) =>
@@ -259,7 +257,7 @@ public class EtcdConfigurationSourceTest
     {
         var factory = new Mock<IEtcdClientFactory>();
         factory
-            .Setup(factory => factory.CreateClient(It.IsAny<EtcdOptions>()))
+            .Setup(f => f.CreateClient(It.IsAny<EtcdOptions>()))
             .Returns(client.Object);
         return factory;
     }

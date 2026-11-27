@@ -73,8 +73,15 @@ public class EtcdConfigurationSource : IConfigurationSource
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Failed to load the initial etcd configuration. The host will not start.");
-            throw;
+            throw new InitialConfigurationLoadException("Failed to load the initial etcd configuration.", exception);
         }
+    }
+}
+
+internal sealed class InitialConfigurationLoadException : Exception
+{
+    public InitialConfigurationLoadException(string message, Exception innerException)
+        : base(message, innerException)
+    {
     }
 }
