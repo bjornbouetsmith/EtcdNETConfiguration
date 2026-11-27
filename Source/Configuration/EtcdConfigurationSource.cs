@@ -78,7 +78,7 @@ public class EtcdConfigurationSource : IConfigurationSource
     }
 }
 
-internal sealed class InitialConfigurationLoadException : Exception
+public sealed class InitialConfigurationLoadException : Exception
 {
     public InitialConfigurationLoadException(string message, Exception innerException)
         : base(message, innerException)
